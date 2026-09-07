@@ -48,6 +48,10 @@ class NotificationsClient(
     /** Re-reads the system state. Call whenever a settings screen appears. */
     fun refreshAuthorization() {
         _isAuthorized.value = hasPermission() && NotificationManagerCompat.from(app).areNotificationsEnabled()
+        // Self-heal the alarm chain: a force-stop clears pending alarms, and
+        // permission granted after the fact would otherwise leave the
+        // reminder switched on in Settings but never firing.
+        applyReminderState()
     }
 
     /** Intent that opens this app's notification settings page. */
@@ -96,10 +100,17 @@ class NotificationsClient(
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
 
-        alarms.setRepeating(
+        // Deliberately a one-shot that ReminderReceiver re-arms after every
+        // fire, not setRepeating(INTERVAL_DAY): a fixed 24-hour period drifts
+        // by an hour at each DST change and never recovers, so a 20:00
+        // reminder slowly becomes a 19:00 one. Recomputing the calendar time
+        // each day keeps it pinned to the wall clock the user chose.
+        //
+        // setAndAllowWhileIdle still fires in Doze and needs no exact-alarm
+        // permission; a study nudge does not need to-the-second precision.
+        alarms.setAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
             next.timeInMillis,
-            AlarmManager.INTERVAL_DAY,
             pending,
         )
     }

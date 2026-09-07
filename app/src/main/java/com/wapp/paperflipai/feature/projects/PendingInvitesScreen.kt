@@ -42,6 +42,7 @@ import com.wapp.paperflipai.designsystem.component.PFEmptyState
 import com.wapp.paperflipai.designsystem.component.PFErrorBanner
 import com.wapp.paperflipai.designsystem.component.PFScreen
 import com.wapp.paperflipai.designsystem.component.PFTagPill
+import com.wapp.paperflipai.designsystem.component.PFToast
 import com.wapp.paperflipai.designsystem.component.PFTopBar
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFElevation
@@ -68,6 +69,7 @@ fun PendingInvitesScreen(
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var processingId by remember { mutableStateOf<String?>(null) }
+    val actionFailedLabel = stringResource(R.string.couldnt_complete_that)
 
     suspend fun load() {
         val email = env.auth.session.value?.email ?: return
@@ -195,9 +197,17 @@ fun PendingInvitesScreen(
                                 onClick = {
                                     scope.launch {
                                         processingId = invite.id
-                                        runCatching { env.remote.declineProjectInvite(invite.id) }
-                                        invites.removeAll { it.id == invite.id }
+                                        val result =
+                                            runCatching { env.remote.declineProjectInvite(invite.id) }
                                         processingId = null
+                                        if (result.isSuccess) {
+                                            invites.removeAll { it.id == invite.id }
+                                        } else {
+                                            PFToast.error(
+                                                actionFailedLabel,
+                                                result.exceptionOrNull()?.message,
+                                            )
+                                        }
                                     }
                                 },
                                 variant = PFButtonVariant.Ghost,
@@ -209,15 +219,26 @@ fun PendingInvitesScreen(
                                 onClick = {
                                     scope.launch {
                                         processingId = invite.id
-                                        runCatching {
+                                        val result = runCatching {
                                             env.remote.acceptProjectInvite(invite.id)
                                             env.auth.session.value?.userId?.let {
                                                 env.sync.pullProjects(it)
                                             }
                                         }
-                                        invites.removeAll { it.id == invite.id }
                                         processingId = null
-                                        onOpenProject(invite.projectId)
+                                        // Previously the invite was removed and the
+                                        // project opened even when accept threw —
+                                        // navigating into a project the user has no
+                                        // access to, with the invite gone from the list.
+                                        if (result.isSuccess) {
+                                            invites.removeAll { it.id == invite.id }
+                                            onOpenProject(invite.projectId)
+                                        } else {
+                                            PFToast.error(
+                                                actionFailedLabel,
+                                                result.exceptionOrNull()?.message,
+                                            )
+                                        }
                                     }
                                 },
                                 trailingIcon = PFIcons.Check,

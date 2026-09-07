@@ -24,4 +24,12 @@
     <string name="shortcut_study_long">ابدأ المراجعة</string>
     <string name="shortcut_import_short">مجموعة جديدة</string>
     <string name="shortcut_import_long">أنشئ مجموعة من رابط</string>
+    <string name="reminder_title">حان وقت المراجعة</string>
+    <string name="reminder_body">دقائق قليلة اليوم تُبقي سلسلتك مستمرة.</string>
+    <string name="reminder_preview_title">معاينة التذكير</string>
+    <string name="reminder_preview_body">هكذا سيبدو تذكيرك اليومي.</string>
+    <string name="purchases_restored">تمت استعادة المشتريات</string>
+    <string name="couldnt_restore">تعذّرت الاستعادة</string>
+    <string name="nothing_to_restore">لم يُعثر على عملية شراء سابقة على حساب Google هذا.</string>
+    <string name="sync_failed">تعذّرت المزامنة</string>
 </resources>

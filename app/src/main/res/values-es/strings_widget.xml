@@ -16,4 +16,12 @@
     <string name="shortcut_study_long">Empezar a estudiar</string>
     <string name="shortcut_import_short">Nuevo mazo</string>
     <string name="shortcut_import_long">Crear un mazo desde un enlace</string>
+    <string name="reminder_title">Hora de estudiar</string>
+    <string name="reminder_body">Unos minutos hoy mantienen viva tu racha.</string>
+    <string name="reminder_preview_title">Vista previa del recordatorio</string>
+    <string name="reminder_preview_body">Así se verá tu recordatorio diario.</string>
+    <string name="purchases_restored">Compras restauradas</string>
+    <string name="couldnt_restore">No se pudo restaurar</string>
+    <string name="nothing_to_restore">No se encontró ninguna compra en esta cuenta de Google.</string>
+    <string name="sync_failed">No se pudo sincronizar</string>
 </resources>

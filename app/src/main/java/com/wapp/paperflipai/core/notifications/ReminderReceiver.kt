@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.wapp.paperflipai.MainActivity
+import com.wapp.paperflipai.PaperflipApplication
 import com.wapp.paperflipai.R
 
 /**
@@ -21,13 +22,22 @@ class ReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val preview = intent.action == ACTION_PREVIEW
-        val title = if (preview) "Preview reminder" else "Time to study"
-        val body = if (preview) {
-            "This is what your daily reminder will look like."
-        } else {
-            "A few minutes today keeps your streak alive."
-        }
+        // Localised: the app ships in four languages, and iOS hardcoding this
+        // copy in English is a bug worth not porting.
+        val title = context.getString(
+            if (preview) R.string.reminder_preview_title else R.string.reminder_title
+        )
+        val body = context.getString(
+            if (preview) R.string.reminder_preview_body else R.string.reminder_body
+        )
         notify(context, title, body, if (preview) 4201 else 4200)
+
+        // The daily alarm is a self-rescheduling one-shot (see
+        // NotificationsClient.applyReminderState), so arm tomorrow's now.
+        if (!preview) {
+            val app = context.applicationContext as? PaperflipApplication
+            app?.environment?.notifications?.applyReminderState()
+        }
     }
 
     private fun notify(context: Context, title: String, body: String, id: Int) {

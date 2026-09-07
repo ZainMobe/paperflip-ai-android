@@ -88,6 +88,15 @@ fun LibraryHomeScreen(
     val cards by env.database.cards.collectAsStateWithLifecycle()
     val entitlement by env.entitlements.entitlement.collectAsStateWithLifecycle()
     val isSyncing by env.sync.isSyncing.collectAsStateWithLifecycle()
+    val syncError by env.sync.lastError.collectAsStateWithLifecycle()
+
+    // SyncEngine records why a pull failed but nothing was reading it, so a
+    // failed refresh looked identical to a successful one with no new data.
+    // Library is where refresh lives, so it is where the failure belongs.
+    val syncFailedLabel = stringResource(R.string.sync_failed)
+    LaunchedEffect(syncError) {
+        syncError?.let { PFToast.warning(syncFailedLabel, it) }
+    }
     val session by env.auth.session.collectAsStateWithLifecycle()
     val useGrid by env.settings.libraryGrid.collectAsStateWithLifecycle()
     val pendingAction by IntentInbox.pending.collectAsStateWithLifecycle()
@@ -100,6 +109,11 @@ fun LibraryHomeScreen(
     var showNewProject by remember { mutableStateOf(false) }
     var joinToken by remember { mutableStateOf<String?>(null) }
     var confirmation by remember { mutableStateOf<PFConfirmation?>(null) }
+
+    val deleteFolderTitle = stringResource(R.string.delete_this_folder)
+    val deleteFolderMessage = stringResource(R.string.decks_inside_will_move_to_all_they_won_t_be_de)
+    val deleteFolderConfirm = stringResource(R.string.delete_folder)
+    val cancelFolderLabel = stringResource(R.string.cancel)
     var unreadCount by remember { mutableStateOf(0) }
 
     val cardCounts = remember(cards) { cards.groupingBy { it.deckId }.eachCount() }
@@ -357,9 +371,21 @@ fun LibraryHomeScreen(
             },
             onDelete = target.folder?.let { folder ->
                 {
+                    // iOS puts a confirmationDialog here; deleting a folder is
+                    // one tap away from reorganising the whole library and has
+                    // no undo. The decks survive — say so.
                     folderEditor = null
-                    if (selectedFolderId == folder.id) selectedFolderId = null
-                    scope.launch { env.repository.deleteFolder(folder.id) }
+                    confirmation = PFConfirmation(
+                        title = deleteFolderTitle,
+                        message = deleteFolderMessage,
+                        icon = PFIcons.Delete,
+                        confirmTitle = deleteFolderConfirm,
+                        cancelTitle = cancelFolderLabel,
+                        destructive = true,
+                    ) {
+                        if (selectedFolderId == folder.id) selectedFolderId = null
+                        env.repository.deleteFolder(folder.id)
+                    }
                 }
             },
         )

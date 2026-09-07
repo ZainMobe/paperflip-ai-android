@@ -89,6 +89,10 @@ class AppEnvironment(context: Context) {
     /** Recomputes the home-screen widget payload from the current store. */
     fun refreshWidget() {
         scope.launch {
+            // Re-evaluate the streak against the current clock first: this
+            // runs on every resume, so it is where a streak that lapsed
+            // overnight stops being advertised on the widget.
+            streaks.refresh()
             val cards = database.snapshot.value.cards
             WidgetSnapshotStore.update(
                 context = appContext,

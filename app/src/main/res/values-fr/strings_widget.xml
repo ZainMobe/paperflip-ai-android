@@ -16,4 +16,12 @@
     <string name="shortcut_study_long">Commencer à réviser</string>
     <string name="shortcut_import_short">Nouveau paquet</string>
     <string name="shortcut_import_long">Créer un paquet à partir d\'un lien</string>
+    <string name="reminder_title">C\'est l\'heure de réviser</string>
+    <string name="reminder_body">Quelques minutes aujourd\'hui suffisent à garder votre série.</string>
+    <string name="reminder_preview_title">Aperçu du rappel</string>
+    <string name="reminder_preview_body">Voici à quoi ressemblera votre rappel quotidien.</string>
+    <string name="purchases_restored">Achats restaurés</string>
+    <string name="couldnt_restore">Restauration impossible</string>
+    <string name="nothing_to_restore">Aucun achat trouvé sur ce compte Google.</string>
+    <string name="sync_failed">Synchronisation impossible</string>
 </resources>

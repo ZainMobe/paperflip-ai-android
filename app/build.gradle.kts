@@ -110,4 +110,10 @@ dependencies {
     implementation(libs.androidx.glance.material3)
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    // Plain-JVM unit tests. No Robolectric, no instrumentation: everything
+    // under src/test exercises pure Kotlin (SM2, StudyQueue, StreakMath,
+    // SnapshotMerger), which is why those four were extracted from their
+    // Android-bound owners in the first place.
+    testImplementation(libs.junit)
 }

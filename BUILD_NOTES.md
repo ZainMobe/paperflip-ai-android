@@ -70,6 +70,9 @@ Scripted checks that were run over the whole source tree, all currently clean:
 | `@Composable`-only calls inside `onClick` / `launch {}` / non-composable lambdas | 0 |
 | Duplicate top-level declarations, duplicate resource names | 0 |
 | Every XML resource parses | clean |
+| Unit tests (`:app:testDebugUnitTest`) | 43, see §2c — never executed here |
+| Every string iOS renders exists on Android | 3 unmatched, all benign (§2d) |
+| Swallowed errors on user-initiated actions | 9 found and fixed (§2e) |
 
 Bugs these checks actually caught and that are now fixed: a missing
 `getValue` import in `PFLottie`, a missing `@OptIn(ExperimentalFoundationApi)`
@@ -126,6 +129,227 @@ bug the static checks structurally could not see.
    anyone noticing. The per-file `@OptIn` annotations are still in the source
    and are now redundant, not wrong — if you ever want the warnings back,
    delete the compiler argument rather than the annotations.
+
+### 2b. Runtime-risk review (post-build)
+
+Compiling clean says nothing about behaviour. A pass over the four areas
+where a port most often looks right and behaves wrong found five defects.
+All are fixed; they are recorded because four of the five are the *same
+mistake* and it will recur in any new date code.
+
+**The recurring one: fixed-millisecond day arithmetic.** `86_400_000L` is not
+a day. It is a day except at DST transitions, where it is off by an hour —
+and the iOS original used `Calendar.date(byAdding: .day)` everywhere, so
+these were also silent divergences from the source of truth.
+
+1. **`StreakTracker` wiped streaks after spring-forward.** "Was the last
+   session yesterday?" was `isSameDay(last, now - 86_400_000)`. The day after
+   a spring-forward is 23 hours long, so for any session between 00:00 and
+   01:00 that lands on the day *before* yesterday — streak silently reset to
+   1. Now uses `Calendar.add(DAY_OF_YEAR, -1)`, matching iOS.
+
+2. **`SM2` due dates drifted an hour per DST change**, cumulatively over long
+   intervals. Now schedules with calendar days.
+
+3. **The daily reminder drifted permanently.** `setRepeating(INTERVAL_DAY)` is
+   a fixed 24-hour period, so a 20:00 reminder becomes 19:00 after one DST
+   change and stays there. Replaced with a one-shot `setAndAllowWhileIdle`
+   that `ReminderReceiver` re-arms after each fire, recomputing the wall-clock
+   time each day. As a side benefit the chain now self-heals:
+   `refreshAuthorization()` re-applies it, so a force-stop (which clears
+   pending alarms) or a permission granted after the toggle was switched on no
+   longer leaves the reminder enabled-but-silent.
+
+**And two that were not about dates:**
+
+4. **The study card slid the wrong way in Arabic.** `Modifier.offset { }` is
+   `rtlAware` — it places with `placeRelative`, so under RTL the card moved
+   *away* from the finger, while the `rotationZ` lean (never mirrored) tilted
+   the other way. Swipe gestures are physical, not directional, so the fix is
+   `graphicsLayer { translationX / translationY }`, which is never mirrored —
+   and skips a relayout on every frame. If you ever need a mirrored offset,
+   `Modifier.absoluteOffset {}` is the non-mirroring twin; this file wants the
+   graphicsLayer version.
+
+5. **The reminder notification was English for everyone.** Title and body were
+   hardcoded string literals. iOS has the same bug; it was not worth porting.
+   Now `R.string.reminder_*`, translated into all four languages.
+
+**Verified correct, no change needed:** `SM2`'s easiness-factor and interval
+maths (including using the *new* ease for the interval, which is easy to get
+backwards), `StudyQueue`'s 1:3 new-card interleave and session cap, and
+`SyncEngine.preserveSrs` — which matches on `id` then lowercased front text,
+so a remote-driven deck rebuild keeps every card's interval, ease and due
+date. That last one is the single most damaging thing that could silently
+break; it is worth a unit test before the first real sync.
+
+**One product-level issue, fixed but worth knowing about:** the stored streak
+was only rewritten when a session was recorded, so a user who studied twelve
+days and then stopped kept seeing "12" forever — on the Stats screen and, far
+more conspicuously, on the home-screen widget. `StreakTracker.count` now
+reads 0 once the last session is older than yesterday, and `refreshWidget()`
+re-evaluates on every resume. Nothing is mutated on read; `recordStudy` is
+still the only writer, and it already handled the reset correctly. iOS has
+the original behaviour and the same fix applies there.
+
+### 2c. Unit tests
+
+`app/src/test` — 43 tests over the four classes whose failure modes are
+silent. Plain JUnit on the JVM: no Robolectric, no instrumentation, no
+coroutine test library, so `./gradlew :app:testDebugUnitTest` runs in seconds
+and can gate CI from day one.
+
+| Test class | Covers |
+|---|---|
+| `SM2Test` | quality scale, easiness-factor maths and its 1.3 floor, the 1 / 6 / ×EF interval progression, `Again` restart, calendar-day due dates |
+| `StudyQueueTest` | due-ness boundaries, most-overdue-first ordering, the 1:3 new-card interleave, session cap, mastery buckets |
+| `StreakMathTest` | same-day / yesterday rules across both DST transitions, and streak decay |
+| `SnapshotMergerTest` | SRS preservation by id and by front text, last-write-wins, local-only fields, offline-created decks, empty-payload ambiguity |
+
+Three of these needed a small refactor to become testable, and the refactor is
+worth keeping either way:
+
+* `StreakMath` — the calendar rules, split out of the SharedPreferences-bound
+  `StreakTracker`.
+* `SnapshotMerger` — `merge` and `preserveSrs`, split out of `SyncEngine`
+  (which holds a `PaperflipDatabase` and calls `android.util.Log`, neither of
+  which works in a JVM test). `SyncEngine.merge` is now a one-line delegate.
+
+Both are `internal`, which the `test` source set can still see — AGP wires it
+as a friend module.
+
+**Two tests are regression pins, not coverage.** They encode the DST bugs from
+§2b as executable statements, including an assertion that the *old* arithmetic
+would have failed, so re-introducing `86_400_000L` breaks the build rather
+than someone's streak:
+
+* `session on a spring-forward Sunday still counts as yesterday early Monday`
+* `due date keeps its wall-clock hour across a DST transition`
+
+Both pin `TimeZone.setDefault("America/New_York")` in `@Before` and restore it
+in `@After`, and build every timestamp from local wall-clock fields. A test
+written in UTC would pass against the broken code — which is exactly why the
+bugs survived the first review.
+
+**Note on `assertEquals` in Kotlin:** JUnit's `assertEquals(long, long)` will
+not accept an `Int`, so a bare `assertEquals(999, card.srsDueDate)` silently
+resolves to the `Any?` overload and compares `Integer` to `Long` — a test that
+fails for a reason that has nothing to do with the code. Long literals in
+assertions carry the `L`.
+
+### 2d. Content-parity audit
+
+Two automated passes over the iOS source and the Android string corpus,
+because "full parity" was asserted from file names and never actually
+checked.
+
+**Pass 1 — does every string iOS displays exist somewhere on Android?**
+Extract every literal iOS renders (`Text`, `Label`, `Button`,
+`.navigationTitle`, `.alert`, `.confirmationDialog`, and the labelled
+initialisers), normalise both sides, then look for a match anywhere in
+Android's 998-string corpus. **Result: 3 unmatched**, and two of those were a
+Swift interpolation and an email placeholder. Copy parity is effectively
+complete.
+
+**Pass 2 — is every ported string actually rendered?** Sharper, and it is the
+one that found real bugs: any key in `strings_generated.xml` that no Kotlin or
+XML file references is copy that exists on iOS and appears nowhere on Android.
+That was **81 of 521**, now 72. The remainder is accounted for:
+
+* ~16 are correctly absent — Apple-billing wording, "Open iOS Settings", iOS
+  notification authorisation levels (`provisional`, `ephemeral`, App Clips),
+  App Intents descriptions. Android has its own wording for each.
+* ~13 belong to `DesignSystemPreview.swift`, a developer-only gallery screen
+  that was deliberately not ported.
+* 4 (`%d-week/-month/-year free trial`) are waiting on
+  `RevenueCatEntitlementStore`, which has no Android implementation yet
+  (§11). They are already translated — whoever wires RevenueCat should use
+  them rather than hardcoding a day-based trial, which is the shape the mock
+  happens to return.
+
+**What it actually caught: five destructive actions that iOS confirms and
+Android performed immediately, with no undo.**
+
+| Action | Was | Now |
+|---|---|---|
+| Delete folder | deleted on tap | confirms, and says decks move to "All" rather than being deleted |
+| Remove project member | removed on tap | confirms, naming the member and project |
+| Revoke sent invite | revoked on tap | confirms, naming the invitee |
+| Decline join request | declined on tap | confirms, noting they can request again |
+| Remove profile picture | removed on tap | confirms |
+
+Delete-project and leave-project were already confirmed, which is what made
+the omissions easy to miss by reading: the file *looked* like it handled
+confirmation properly.
+
+All five now build a `PFConfirmation` and render through the screen's
+`PFConfirmationHost`, matching the existing pattern. Two screens needed the
+host adding. Note the mechanical constraint that shapes this code:
+`stringResource` cannot be called inside a non-composable `onClick` lambda, so
+any message needing runtime arguments resolves its format template in the
+composable body and calls `String.format` at the point of use.
+
+**Not ported deliberately:** the iOS accessibility hints
+("Double tap to open", "Double tap to reveal the answer"). TalkBack already
+announces "double-tap to activate" for anything with a click action, so
+repeating it is noise. The Android equivalents are `onClick(label = …)` and
+the custom actions already on `StudyCard`.
+
+### 2e. Failure-path audit
+
+Same trick as §2d — ask a different question of the same code. This one:
+*what does the user see when a call fails?* Every `runCatching { }` with no
+`.onFailure`, `.fold` or result binding is a swallowed error.
+
+31 such blocks. Most are legitimately best-effort (registering a network
+callback, requesting focus, updating the widget). Nine were not.
+
+**Two were actively misleading, not merely silent:**
+
+* **"Restore purchases" toasted success unconditionally.** `Manage
+  Subscription` fired `PFToast.info("Restore purchases")` after the call
+  regardless of outcome, so a subscriber whose restore threw was told it had
+  worked. On the paywall the same button said nothing at all, leaving "no
+  purchase found" indistinguishable from "the network failed". Both now branch
+  three ways — restored / nothing found / failed — and the first checks that
+  the entitlement actually went active rather than assuming it. iOS has done
+  this since day one (`PFToast.success` / `PFToast.error` around a `do/catch`).
+
+* **Accepting an invite navigated on failure.** `PendingInvitesScreen` removed
+  the invite from the list and called `onOpenProject(...)` outside the
+  `runCatching`, so a failed accept dropped the invite *and* pushed the user
+  into a project they had no access to. Approving a join request had the same
+  shape: the row vanished whether or not the person was approved. Both now
+  mutate and navigate only on success.
+
+**Seven were silent where iOS is not:** role change, remove member, resend
+invite, revoke invite, decline invite, decline request, approve request. All
+now surface `couldnt_complete_that` with the underlying message.
+
+**And one channel had no consumer at all:** `SyncEngine` records `lastError`
+("Offline — using cached data", the failure message) and *nothing read it*.
+A failed pull-to-refresh in the library looked exactly like a successful one
+with nothing new. `LibraryHomeScreen` now watches it and warns.
+
+The shape used throughout, because it is the one that composes with the
+early-return-on-failure requirement:
+
+```kotlin
+val result = runCatching { … }
+processingId = null
+if (result.isSuccess) { mutateUi() } else { PFToast.error(label, result.exceptionOrNull()?.message) }
+```
+
+`.onFailure { }` alone is fine where the only thing missing was feedback, but
+not where UI mutation has to be conditional — which was the actual bug in the
+two cases above.
+
+**Related, and checked while here:** Pro gating is at parity. Both platforms
+define `cardCap` (20 free / 50 Pro) and `monthlyDeckCap` (5 free / unlimited),
+and *neither* enforces the monthly cap client-side — it is a server
+concern, surfaced as `RemoteStoreError.PlanLimitReached`. Android has that
+error case and the `%d-week/-month/-year free trial` strings already
+translated, both waiting on the RevenueCat implementation.
 
 ---
 
@@ -378,9 +602,10 @@ Android, and it is what keeps the app legible in Arabic.
 
 * **Not compiled.** Stated once more because it is the only thing on this
   list that matters.
-* No unit or instrumentation tests. There is no `src/test` source set at all;
-  `SM2`, `StudyQueue`, `StreakTracker` and `SyncEngine.merge` are pure Kotlin
-  and are the obvious first four test classes.
+* No instrumentation or Compose UI tests. `src/test` now covers the four
+  pure-logic classes (§2c); nothing exercises navigation, the widget, or a
+  screen. `PFButton`, `StudyCard` and `MainScaffold`'s route handling are the
+  places a Compose test would earn its keep first.
 * `RevenueCatEntitlementStore` and `SupabaseRemoteStore` have no Android
   implementations — the interfaces and the Mocks are there, and the iOS files
   of the same names are the reference for filling them in.

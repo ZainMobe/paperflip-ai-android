@@ -40,7 +40,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.wapp.paperflipai.R
 import com.wapp.paperflipai.core.data.PFFlashcard
@@ -57,7 +56,6 @@ import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.pfElevation
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -128,8 +126,17 @@ fun StudyCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
-            .graphicsLayer { rotationZ = dragOffset.x * 0.02f }
+            // Draw-time translation, deliberately NOT Modifier.offset {}:
+            // that overload is rtlAware and places with placeRelative, so in
+            // Arabic the card slid away from the finger while rotationZ (which
+            // is never mirrored) leaned the other way. graphicsLayer keeps
+            // gesture and pixels in the same direction in both layout
+            // directions, and skips a relayout on every frame.
+            .graphicsLayer {
+                translationX = dragOffset.x
+                translationY = dragOffset.y
+                rotationZ = dragOffset.x * 0.02f
+            }
             .semantics {
                 contentDescription = if (flipped) "$answerLabel. ${card.back}"
                 else "$questionLabel. ${card.front}"

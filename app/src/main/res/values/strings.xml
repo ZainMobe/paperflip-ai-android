@@ -106,4 +106,16 @@
     <string name="shortcut_study_long">Start studying</string>
     <string name="shortcut_import_short">New deck</string>
     <string name="shortcut_import_long">Create a deck from a link</string>
+
+    <!-- Daily reminder notification -->
+    <string name="reminder_title">Time to study</string>
+    <string name="reminder_body">A few minutes today keeps your streak alive.</string>
+    <string name="reminder_preview_title">Preview reminder</string>
+    <string name="reminder_preview_body">This is what your daily reminder will look like.</string>
+
+    <!-- Purchase restore + sync feedback -->
+    <string name="purchases_restored">Purchases restored</string>
+    <string name="couldnt_restore">Couldn\'t restore</string>
+    <string name="nothing_to_restore">No previous purchase found on this Google account.</string>
+    <string name="sync_failed">Couldn\'t sync</string>
 </resources>

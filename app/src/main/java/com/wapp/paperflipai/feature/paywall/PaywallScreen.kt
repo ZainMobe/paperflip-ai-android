@@ -50,6 +50,7 @@ import com.wapp.paperflipai.designsystem.component.PFButtonVariant
 import com.wapp.paperflipai.designsystem.component.PFErrorBanner
 import com.wapp.paperflipai.designsystem.component.PFIconButton
 import com.wapp.paperflipai.designsystem.component.PFTagPill
+import com.wapp.paperflipai.designsystem.component.PFToast
 import com.wapp.paperflipai.designsystem.modifier.PFHaptic
 import com.wapp.paperflipai.designsystem.modifier.pfPressable
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
@@ -92,6 +93,10 @@ fun PaywallScreen(
     var selectedProductId by remember { mutableStateOf<String?>(null) }
     var isPurchasing by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
+
+    val restoredLabel = stringResource(R.string.purchases_restored)
+    val nothingToRestoreLabel = stringResource(R.string.nothing_to_restore)
+    val couldntRestoreLabel = stringResource(R.string.couldnt_restore)
     var error by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(products) {
@@ -259,8 +264,21 @@ fun PaywallScreen(
                 onClick = {
                     scope.launch {
                         isRestoring = true
-                        runCatching { env.entitlements.restorePurchases() }
+                        val result = runCatching { env.entitlements.restorePurchases() }
                         isRestoring = false
+                        // Silence here is the worst outcome: a subscriber who
+                        // reinstalled cannot tell "no purchase found" apart from
+                        // "the network failed".
+                        result.fold(
+                            onSuccess = {
+                                if (env.entitlements.entitlement.value.isActive) {
+                                    PFToast.success(restoredLabel)
+                                } else {
+                                    PFToast.info(nothingToRestoreLabel)
+                                }
+                            },
+                            onFailure = { PFToast.error(couldntRestoreLabel, it.message) },
+                        )
                     }
                 },
                 variant = PFButtonVariant.Ghost,

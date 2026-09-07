@@ -1,6 +1,7 @@
 package com.wapp.paperflipai.core.srs
 
 import com.wapp.paperflipai.core.data.PFFlashcard
+import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -51,8 +52,6 @@ object SM2 {
     /** Lower bound on the easiness factor (per the original paper). */
     const val MIN_EASE: Double = 1.3
 
-    private const val DAY_MILLIS = 86_400_000L
-
     /**
      * Compute the new SRS state given the previous state, the user's
      * response, and the current timestamp (injectable for tests).
@@ -84,9 +83,22 @@ object SM2 {
             ease = ease,
             interval = interval,
             repetitions = repetitions,
-            dueDate = now + interval * DAY_MILLIS,
+            dueDate = addDays(now, interval),
         )
     }
+
+    /**
+     * Adds calendar days, matching the iOS `Calendar.date(byAdding: .day)`.
+     * Adding a fixed 86_400_000 ms instead would drift by an hour across
+     * every DST transition, so a card scheduled before a change would come
+     * due an hour early or late — and the drift accumulates over long
+     * intervals.
+     */
+    private fun addDays(from: Long, days: Int): Long =
+        Calendar.getInstance().apply {
+            timeInMillis = from
+            add(Calendar.DAY_OF_YEAR, days)
+        }.timeInMillis
 
     /** Reads the SRS fields off a card. */
     fun stateOf(card: PFFlashcard) = SRSState(

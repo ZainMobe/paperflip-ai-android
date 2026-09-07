@@ -45,6 +45,8 @@ import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFButtonSize
 import com.wapp.paperflipai.designsystem.component.PFButtonVariant
 import com.wapp.paperflipai.designsystem.component.PFErrorBanner
+import com.wapp.paperflipai.designsystem.component.PFConfirmation
+import com.wapp.paperflipai.designsystem.component.PFConfirmationHost
 import com.wapp.paperflipai.designsystem.component.PFScreen
 import com.wapp.paperflipai.designsystem.component.PFTextField
 import com.wapp.paperflipai.designsystem.component.PFToast
@@ -78,6 +80,11 @@ fun EditProfileScreen(
     var isSaving by remember { mutableStateOf(false) }
     var savedRecently by remember { mutableStateOf(false) }
     var isUploadingAvatar by remember { mutableStateOf(false) }
+    var confirmation by remember { mutableStateOf<PFConfirmation?>(null) }
+
+    val removePhotoTitle = stringResource(R.string.remove_profile_picture)
+    val removeLabel = stringResource(R.string.remove)
+    val cancelLabel = stringResource(R.string.cancel)
     var error by remember { mutableStateOf<String?>(null) }
 
     val canSave = !isSaving && fullName.trim().isNotEmpty() && fullName.trim() != session?.fullName
@@ -178,7 +185,13 @@ fun EditProfileScreen(
                                 color = PFTheme.colors.danger,
                                 modifier = Modifier.pfPressable(
                                     onClick = {
-                                        scope.launch {
+                                        confirmation = PFConfirmation(
+                                            title = removePhotoTitle,
+                                            icon = PFIcons.Delete,
+                                            confirmTitle = removeLabel,
+                                            cancelTitle = cancelLabel,
+                                            destructive = true,
+                                        ) {
                                             runCatching { env.auth.updateProfileAvatarUrl(null) }
                                         }
                                     },
@@ -271,6 +284,8 @@ fun EditProfileScreen(
             }
         }
     }
+
+    PFConfirmationHost(confirmation) { confirmation = null }
 }
 
 /** Decodes, downscales to 512px on the long edge, and JPEG-encodes at 85%. */

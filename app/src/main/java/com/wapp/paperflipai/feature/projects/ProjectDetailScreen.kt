@@ -182,6 +182,21 @@ fun ProjectDetailScreen(
     val leaveMessage = stringResource(R.string.you_ll_lose_access_to_this_project_s_decks_and)
     val leaveConfirm = stringResource(R.string.leave_project)
     val cancelLabel = stringResource(R.string.cancel)
+
+    // Destructive-action confirmations. iOS puts a confirmationDialog in front
+    // of each of these; without one a single tap on a small button silently
+    // removes someone's access, and there is no undo.
+    val removeMemberTitle = stringResource(R.string.remove_member)
+    val removeLabel = stringResource(R.string.remove)
+    val revokeInviteTitle = stringResource(R.string.revoke_invite)
+    val revokeLabel = stringResource(R.string.revoke)
+    val declineRequestTitle = stringResource(R.string.decline_request)
+    val declineLabel = stringResource(R.string.decline)
+    val removeAccessTemplate = stringResource(R.string.will_lose_access_to_and_its_decks)
+    val revokeTemplate = stringResource(R.string.won_t_be_able_to_accept_this_invitation_anymor)
+    val declineTemplate = stringResource(R.string.they_won_t_be_added_to_they_can_request_again)
+    val someoneLabel = stringResource(R.string.member_fallback)
+    val actionFailedLabel = stringResource(R.string.couldnt_complete_that)
     val deletedToast = stringResource(R.string.project_deleted)
     val leftToast = stringResource(R.string.left_project)
 
@@ -312,15 +327,22 @@ fun ProjectDetailScreen(
                                 runCatching {
                                     env.remote.updateProjectMemberRole(projectId, member.userId, newRole)
                                     loadMembers()
-                                }
+                                }.onFailure { PFToast.error(actionFailedLabel, it.message) }
                             }
                         },
                         onRemove = {
-                            scope.launch {
+                            confirmation = PFConfirmation(
+                                title = removeMemberTitle,
+                                message = removeAccessTemplate.format(member.displayName ?: member.email ?: someoneLabel, project.name),
+                                icon = PFIcons.Delete,
+                                confirmTitle = removeLabel,
+                                cancelTitle = cancelLabel,
+                                destructive = true,
+                            ) {
                                 runCatching {
                                     env.remote.removeProjectMember(projectId, member.userId)
                                     loadMembers()
-                                }
+                                }.onFailure { PFToast.error(actionFailedLabel, it.message) }
                             }
                         },
                     )
@@ -373,6 +395,7 @@ fun ProjectDetailScreen(
                                     scope.launch {
                                         processingId = invite.id
                                         runCatching { env.remote.resendProjectInvite(invite.id) }
+                                        .onFailure { PFToast.error(actionFailedLabel, it.message) }
                                         loadOwnerExtras()
                                         processingId = null
                                     }
@@ -385,11 +408,26 @@ fun ProjectDetailScreen(
                             PFButton(
                                 title = stringResource(R.string.revoke),
                                 onClick = {
-                                    scope.launch {
+                                    confirmation = PFConfirmation(
+                                        title = revokeInviteTitle,
+                                        message = revokeTemplate.format(invite.invitedEmail),
+                                        icon = PFIcons.Delete,
+                                        confirmTitle = revokeLabel,
+                                        cancelTitle = cancelLabel,
+                                        destructive = true,
+                                    ) {
                                         processingId = invite.id
-                                        runCatching { env.remote.revokeProjectInvite(invite.id) }
-                                        sentInvites.removeAll { it.id == invite.id }
+                                        val result =
+                                            runCatching { env.remote.revokeProjectInvite(invite.id) }
                                         processingId = null
+                                        if (result.isSuccess) {
+                                            sentInvites.removeAll { it.id == invite.id }
+                                        } else {
+                                            PFToast.error(
+                                                actionFailedLabel,
+                                                result.exceptionOrNull()?.message,
+                                            )
+                                        }
                                     }
                                 },
                                 variant = PFButtonVariant.Outline,
@@ -472,11 +510,27 @@ fun ProjectDetailScreen(
                             PFButton(
                                 title = stringResource(R.string.decline),
                                 onClick = {
-                                    scope.launch {
+                                    confirmation = PFConfirmation(
+                                        title = declineRequestTitle,
+                                        message = declineTemplate.format(project.name),
+                                        icon = PFIcons.Close,
+                                        confirmTitle = declineLabel,
+                                        cancelTitle = cancelLabel,
+                                        destructive = true,
+                                    ) {
                                         processingId = request.id
-                                        runCatching { env.remote.declineProjectJoinRequest(request.id) }
-                                        joinRequests.removeAll { it.id == request.id }
+                                        val result = runCatching {
+                                            env.remote.declineProjectJoinRequest(request.id)
+                                        }
                                         processingId = null
+                                        if (result.isSuccess) {
+                                            joinRequests.removeAll { it.id == request.id }
+                                        } else {
+                                            PFToast.error(
+                                                actionFailedLabel,
+                                                result.exceptionOrNull()?.message,
+                                            )
+                                        }
                                     }
                                 },
                                 variant = PFButtonVariant.Ghost,
@@ -488,12 +542,21 @@ fun ProjectDetailScreen(
                                 onClick = {
                                     scope.launch {
                                         processingId = request.id
-                                        runCatching {
+                                        val result = runCatching {
                                             env.remote.approveProjectJoinRequest(request.id)
                                             loadMembers()
                                         }
-                                        joinRequests.removeAll { it.id == request.id }
                                         processingId = null
+                                        // The row must not disappear unless the person
+                                        // was actually approved.
+                                        if (result.isSuccess) {
+                                            joinRequests.removeAll { it.id == request.id }
+                                        } else {
+                                            PFToast.error(
+                                                actionFailedLabel,
+                                                result.exceptionOrNull()?.message,
+                                            )
+                                        }
                                     }
                                 },
                                 trailingIcon = PFIcons.Check,

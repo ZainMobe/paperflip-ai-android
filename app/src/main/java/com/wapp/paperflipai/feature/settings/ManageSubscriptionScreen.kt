@@ -59,7 +59,9 @@ fun ManageSubscriptionScreen(
     val scope = rememberCoroutineScope()
     val entitlement by env.entitlements.entitlement.collectAsStateWithLifecycle()
     var isRestoring by remember { mutableStateOf(false) }
-    val restoredLabel = stringResource(R.string.restore_purchases)
+    val restoredLabel = stringResource(R.string.purchases_restored)
+    val nothingToRestoreLabel = stringResource(R.string.nothing_to_restore)
+    val couldntRestoreLabel = stringResource(R.string.couldnt_restore)
 
     PFScreen(
         topBar = { PFTopBar(title = stringResource(R.string.subscription_2), onBack = onBack) },
@@ -149,9 +151,21 @@ fun ManageSubscriptionScreen(
                     onClick = {
                         scope.launch {
                             isRestoring = true
-                            runCatching { env.entitlements.restorePurchases() }
+                            val result = runCatching { env.entitlements.restorePurchases() }
                             isRestoring = false
-                            PFToast.info(restoredLabel)
+                            // Previously this toasted "restored" unconditionally —
+                            // including when the call threw, which tells a paying
+                            // user their purchase is back when it isn't.
+                            result.fold(
+                                onSuccess = {
+                                    if (env.entitlements.entitlement.value.isActive) {
+                                        PFToast.success(restoredLabel)
+                                    } else {
+                                        PFToast.info(nothingToRestoreLabel)
+                                    }
+                                },
+                                onFailure = { PFToast.error(couldntRestoreLabel, it.message) },
+                            )
                         }
                     },
                 )
