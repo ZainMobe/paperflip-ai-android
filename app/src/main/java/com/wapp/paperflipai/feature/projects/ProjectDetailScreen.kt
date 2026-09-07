@@ -331,9 +331,10 @@ fun ProjectDetailScreen(
                             }
                         },
                         onRemove = {
+                            val profile = memberProfiles[member.userId]
                             confirmation = PFConfirmation(
                                 title = removeMemberTitle,
-                                message = removeAccessTemplate.format(member.displayName ?: member.email ?: someoneLabel, project.name),
+                                message = removeAccessTemplate.format(profile?.fullName ?: profile?.email ?: someoneLabel, project.name),
                                 icon = PFIcons.Delete,
                                 confirmTitle = removeLabel,
                                 cancelTitle = cancelLabel,
