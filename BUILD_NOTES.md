@@ -83,6 +83,20 @@ What these checks **cannot** see: type mismatches, wrong argument counts,
 nullability, generic inference, and lambda-scope receivers. The first real
 build proved the point — see §2a for exactly what got through.
 
+**The sharpest blind spot is member access on the wrong type**, because the
+symbol resolves and only the *field* is wrong. It has bitten once already:
+`member.displayName` compiled fine in the author's head because
+`PFProjectMember` has that field — but the variable was a
+`ProjectMemberDto`, which mirrors the table, and the table has no such
+column. The domain model gets `displayName`/`email` from the profile join;
+the DTO never has them.
+
+The rule this implies, worth applying to any new backend code: **a `*Dto`
+carries exactly the table's columns, nothing more.** Anything richer comes
+from `toModel()` or from the `memberProfiles` / `profiles` map that travels
+alongside it. When a field feels like it should be there and isn't, that is
+the DTO being right, not incomplete.
+
 ### 2a. What the first real build caught
 
 Five things, all fixed. They are recorded here because each one is a class of
