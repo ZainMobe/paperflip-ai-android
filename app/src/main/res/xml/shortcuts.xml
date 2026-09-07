@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher long-press shortcuts — the Android counterpart of the iOS
+    `PaperflipShortcuts` / `StartStudyingIntent` App Intents. Both drop a
+    deep link that `IntentInbox.actionFor(...)` turns into a `PFAction`,
+    exactly like the iOS inbox.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="start_studying"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_study"
+        android:shortcutShortLabel="@string/shortcut_study_short"
+        android:shortcutLongLabel="@string/shortcut_study_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="paperflip://study"
+            android:targetPackage="com.wapp.paperflipai"
+            android:targetClass="com.wapp.paperflipai.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="new_deck"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_import"
+        android:shortcutShortLabel="@string/shortcut_import_short"
+        android:shortcutLongLabel="@string/shortcut_import_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="paperflip://import"
+            android:targetPackage="com.wapp.paperflipai"
+            android:targetClass="com.wapp.paperflipai.MainActivity" />
+    </shortcut>
+
+</shortcuts>

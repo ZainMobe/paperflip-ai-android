@@ -1,0 +1,37 @@
+# PaperFlip R8 rules.
+#
+# R8 is currently off (`buildTypes { release { optimization { enable = false } } }`).
+# Turn it on before shipping — these rules are what it will need.
+
+# ── kotlinx.serialization ─────────────────────────────────────────────
+# The whole local database and the sync wire format are @Serializable, and
+# R8 cannot see that the generated serializers are used.
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+
+-keepclassmembers class kotlinx.serialization.json.** {
+    *** Companion;
+}
+-keepclasseswithmembers class kotlinx.serialization.json.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+-keep,includedescriptorclasses class com.wapp.paperflipai.**$$serializer { *; }
+-keepclassmembers class com.wapp.paperflipai.** {
+    *** Companion;
+}
+-keepclasseswithmembers class com.wapp.paperflipai.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+
+# ── Glance / app widget ───────────────────────────────────────────────
+# The widget receiver is instantiated by the launcher, by name.
+-keep class com.wapp.paperflipai.widget.PaperflipWidgetReceiver { *; }
+-keep class com.wapp.paperflipai.widget.PaperflipWidget { *; }
+
+# ── Manifest-declared receivers ───────────────────────────────────────
+-keep class com.wapp.paperflipai.core.notifications.ReminderReceiver { *; }
+-keep class com.wapp.paperflipai.core.notifications.BootReceiver { *; }
+
+# ── Lottie ────────────────────────────────────────────────────────────
+-dontwarn com.airbnb.lottie.**

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:name=".PaperflipApplication"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
+        android:localeConfig="@xml/locales_config"
+        android:theme="@style/Theme.PaperflipAI">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode|density|fontScale"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.PaperflipAI">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- paperflip://study, paperflip://deck/{id}, paperflip://projects/join/{token} -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="paperflip" />
+            </intent-filter>
+
+            <!-- https://www.paperflip.ai/share/… and /projects/join/… -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.paperflip.ai" android:pathPrefix="/share" />
+                <data android:scheme="https" android:host="www.paperflip.ai" android:pathPrefix="/projects" />
+                <data android:scheme="https" android:host="paperflip.ai" android:pathPrefix="/share" />
+                <data android:scheme="https" android:host="paperflip.ai" android:pathPrefix="/projects" />
+            </intent-filter>
+
+            <!-- Share sheet: YouTube links, article URLs, plain text, PDFs -->
+            <intent-filter android:label="@string/share_import_title">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter android:label="@string/share_import_title">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
+            <!-- Launcher long-press shortcuts (iOS: App Intents / Siri) -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+        </activity>
+
+        <!-- Daily study reminder -->
+        <receiver
+            android:name=".core.notifications.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".core.notifications.BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Home screen widget -->
+        <receiver
+            android:name=".widget.PaperflipWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/paperflip_widget_info" />
+        </receiver>
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+</manifest>

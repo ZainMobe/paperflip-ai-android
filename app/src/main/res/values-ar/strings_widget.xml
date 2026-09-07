@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_today_label">اليوم</string>
+    <string name="widget_day_streak">يوم متتالٍ</string>
+    <string name="widget_tap_to_study">اضغط للمراجعة</string>
+    <string name="widget_open_app">فتح PaperFlip</string>
+    <plurals name="widget_cards_due_today">
+        <item quantity="zero">بطاقة مستحقة اليوم</item>
+        <item quantity="one">بطاقة مستحقة اليوم</item>
+        <item quantity="two">بطاقتان مستحقتان اليوم</item>
+        <item quantity="few">بطاقات مستحقة اليوم</item>
+        <item quantity="many">بطاقة مستحقة اليوم</item>
+        <item quantity="other">بطاقة مستحقة اليوم</item>
+    </plurals>
+    <plurals name="widget_cards_due">
+        <item quantity="zero">بطاقة مستحقة</item>
+        <item quantity="one">بطاقة مستحقة</item>
+        <item quantity="two">بطاقتان مستحقتان</item>
+        <item quantity="few">بطاقات مستحقة</item>
+        <item quantity="many">بطاقة مستحقة</item>
+        <item quantity="other">بطاقة مستحقة</item>
+    </plurals>
+    <string name="shortcut_study_short">مراجعة</string>
+    <string name="shortcut_study_long">ابدأ المراجعة</string>
+    <string name="shortcut_import_short">مجموعة جديدة</string>
+    <string name="shortcut_import_long">أنشئ مجموعة من رابط</string>
+</resources>

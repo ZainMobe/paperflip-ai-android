@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_today_label">AUJOURD\'HUI</string>
+    <string name="widget_day_streak">jours d\'affilée</string>
+    <string name="widget_tap_to_study">Appuyez pour réviser</string>
+    <string name="widget_open_app">Ouvrir PaperFlip</string>
+    <plurals name="widget_cards_due_today">
+        <item quantity="one">carte à réviser aujourd\'hui</item>
+        <item quantity="other">cartes à réviser aujourd\'hui</item>
+    </plurals>
+    <plurals name="widget_cards_due">
+        <item quantity="one">carte à réviser</item>
+        <item quantity="other">cartes à réviser</item>
+    </plurals>
+    <string name="shortcut_study_short">Réviser</string>
+    <string name="shortcut_study_long">Commencer à réviser</string>
+    <string name="shortcut_import_short">Nouveau paquet</string>
+    <string name="shortcut_import_long">Créer un paquet à partir d\'un lien</string>
+</resources>

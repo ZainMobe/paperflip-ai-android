@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- PaperFlip mark: stacked cards with a folded gold corner.
+         Source art is 715x715; scaled to 70/108 and centred inside the
+         adaptive-icon safe zone. -->
+    <group
+        android:translateX="19"
+        android:translateY="19"
+        android:scaleX="0.0979"
+        android:scaleY="0.0979">
+        <path
+            android:pathData="M60,116.5H598.5V655C598.5,687.309 572.309,713.5 540,713.5H60C27.6913,713.5 1.5,687.309 1.5,655V175C1.5,142.692 27.6913,116.5 60,116.5Z"
+            android:strokeColor="#E8C96A"
+            android:strokeWidth="10" />
+        <path
+            android:pathData="M175,1.5H525.871L696.687,174.997C707.461,185.94 713.5,200.681 713.5,216.039V540C713.5,572.309 687.309,598.5 655,598.5H175C142.691,598.5 116.5,572.309 116.5,540V60C116.5,27.944 142.284,1.91 174.244,1.505L175,1.5Z"
+            android:fillColor="#161A24"
+            android:strokeColor="#E8C96A"
+            android:strokeWidth="10" />
+        <path
+            android:pathData="M715,270.001H505C471.863,270.001 445,243.137 445,210V0H524.081L714.919,190.838V0H715V270.001Z"
+            android:fillColor="#E8C96A" />
+    </group>
+</vector>

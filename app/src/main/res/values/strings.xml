@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Paperflip AI</string>
+
+    <!-- Navigation / generic UI (Android-specific, no iOS counterpart) -->
+    <string name="nav_back">Back</string>
+    <string name="nav_more">More options</string>
+    <string name="nav_close">Close</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_clear_search">Clear search</string>
+    <string name="nav_refresh">Refresh</string>
+    <string name="undo">Undo</string>
+    <string name="ok">OK</string>
+
+    <!-- Android platform wording (replaces the iOS/Apple phrasing) -->
+    <string name="appearance_system_desc_android">Follows your device Light/Dark mode.</string>
+    <string name="open_system_settings">Open system settings</string>
+    <string name="notifications_denied_android">Notifications are turned off. Enable them in system settings to schedule reminders.</string>
+    <string name="billing_note_android">PaperFlip Pro is billed through Google Play. Subscriptions auto-renew until cancelled. Cancel any time in Play Store → Subscriptions.</string>
+    <string name="manage_in_play_store">Manage in Google Play</string>
+    <string name="manage_subscriptions_in_play">Manage subscriptions in Google Play</string>
+    <string name="delete_account_billing_note_android">PaperFlip Pro is billed through Google Play. If you don\'t cancel it before deleting the account, Google will keep charging your payment method.</string>
+    <string name="widgets_blurb_android">Today\'s reviews and streak right on your home screen.</string>
+
+    <!-- Home screen widget -->
+    <string name="widget_name">PaperFlip</string>
+    <string name="widget_description">Today\'s due cards and your study streak.</string>
+    <string name="widget_due_today">Due today</string>
+    <string name="widget_empty">All caught up</string>
+
+    <!-- Notification channels -->
+    <string name="channel_reminders_name">Study reminders</string>
+    <string name="channel_reminders_desc">Your daily nudge to review due cards.</string>
+    <string name="channel_updates_name">Project updates</string>
+    <string name="channel_updates_desc">Invites and activity from projects you belong to.</string>
+
+    <!-- Share sheet -->
+    <string name="share_import_title">Import into PaperFlip</string>
+
+    <!-- Onboarding (plain strings on iOS too) -->
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_1_eyebrow">Made for learners</string>
+    <string name="onboarding_1_title">Turn anything\ninto flashcards</string>
+    <string name="onboarding_1_body">Drop in a PDF, paste a YouTube link, or share an article — and we\'ll build the deck.</string>
+    <string name="onboarding_2_eyebrow">Backed by science</string>
+    <string name="onboarding_2_title">Study smarter,\nnot harder</string>
+    <string name="onboarding_2_body">Spaced repetition serves you each card right when you\'re about to forget it.</string>
+    <string name="onboarding_3_eyebrow">Always with you</string>
+    <string name="onboarding_3_title">Learn anywhere,\nanytime</string>
+    <string name="onboarding_3_body">Offline-first. Widgets and reminders keep your streak alive without thinking about it.</string>
+
+    <!-- Small labels with no direct iOS key -->
+    <string name="optional">Optional</string>
+    <string name="at_least_8_characters">At least 8 characters</string>
+    <string name="at_least_8_characters_period">At least 8 characters.</string>
+    <string name="well_never_share_this">We\'ll never share this.</string>
+    <string name="email_placeholder">you@example.com</string>
+    <string name="password_placeholder">••••••••</string>
+    <string name="that_email_doesnt_look_right">That email doesn\'t look right.</string>
+    <string name="we_couldn_t_find_that_deck">We couldn\'t find that deck.</string>
+    <string name="couldnt_move_deck">Couldn\'t move deck</string>
+    <string name="couldnt_update_sharing">Couldn\'t update sharing</string>
+    <string name="deck_deleted">Deck deleted</string>
+    <string name="pdf_too_large">PDF is too large (max 32 MB).</string>
+    <string name="couldnt_read_the_pdf">Couldn\'t read that PDF. Try picking it again.</string>
+    <string name="doesnt_look_like_a_youtube_link">Doesn\'t look like a YouTube link.</string>
+    <string name="that_doesnt_look_like_a_valid_url">That doesn\'t look like a valid URL.</string>
+    <string name="new_card">New card</string>
+    <string name="question_placeholder">Question</string>
+    <string name="answer_placeholder">Answer</string>
+    <string name="paste_the_share_url_you_received">Paste the share URL you received.</string>
+    <string name="generating_your_deck_a11y">Generating your deck</string>
+    <string name="project_fallback">Project</string>
+    <string name="member_fallback">Member</string>
+    <string name="someone">Someone</string>
+    <string name="invite_sent">Invite sent</string>
+    <string name="invite_revoked">Invite revoked</string>
+    <string name="invite_refreshed">Invite refreshed</string>
+    <string name="member_removed">Member removed</string>
+    <string name="project_deleted">Project deleted</string>
+    <string name="left_project">Left project</string>
+    <string name="request_approved">Request approved</string>
+    <string name="request_declined">Request declined</string>
+    <string name="request_sent">Request sent</string>
+    <string name="couldnt_complete_that">Couldn\'t complete that</string>
+    <string name="how_do_i_cancel">How do I cancel my subscription?</string>
+    <string name="how_does_spaced_repetition_work_q">How does spaced repetition work?</string>
+    <string name="why_is_my_deck_missing">Why is one of my decks missing?</string>
+
+    <!-- Home screen widget (Glance) -->
+    <string name="widget_today_label">TODAY</string>
+    <string name="widget_day_streak">day streak</string>
+    <string name="widget_tap_to_study">Tap to study</string>
+    <string name="widget_open_app">Open PaperFlip</string>
+    <plurals name="widget_cards_due_today">
+        <item quantity="one">card due today</item>
+        <item quantity="other">cards due today</item>
+    </plurals>
+    <plurals name="widget_cards_due">
+        <item quantity="one">card due</item>
+        <item quantity="other">cards due</item>
+    </plurals>
+
+    <!-- Launcher shortcuts -->
+    <string name="shortcut_study_short">Study</string>
+    <string name="shortcut_study_long">Start studying</string>
+    <string name="shortcut_import_short">New deck</string>
+    <string name="shortcut_import_long">Create a deck from a link</string>
+</resources>

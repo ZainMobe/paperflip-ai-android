@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_today_label">HOY</string>
+    <string name="widget_day_streak">días seguidos</string>
+    <string name="widget_tap_to_study">Toca para estudiar</string>
+    <string name="widget_open_app">Abrir PaperFlip</string>
+    <plurals name="widget_cards_due_today">
+        <item quantity="one">tarjeta para hoy</item>
+        <item quantity="other">tarjetas para hoy</item>
+    </plurals>
+    <plurals name="widget_cards_due">
+        <item quantity="one">tarjeta pendiente</item>
+        <item quantity="other">tarjetas pendientes</item>
+    </plurals>
+    <string name="shortcut_study_short">Estudiar</string>
+    <string name="shortcut_study_long">Empezar a estudiar</string>
+    <string name="shortcut_import_short">Nuevo mazo</string>
+    <string name="shortcut_import_long">Crear un mazo desde un enlace</string>
+</resources>
