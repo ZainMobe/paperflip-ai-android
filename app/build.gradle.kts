@@ -110,6 +110,13 @@ dependencies {
     // Storage are plain REST — see SupabaseClient.
     implementation(libs.okhttp)
 
+    // Google sign-in via Credential Manager. credentials-play-services-auth
+    // is what actually talks to Play Services; `credentials` alone compiles
+    // and then finds no provider at runtime.
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services)
+    implementation(libs.googleid)
+
     // Home screen widget
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)

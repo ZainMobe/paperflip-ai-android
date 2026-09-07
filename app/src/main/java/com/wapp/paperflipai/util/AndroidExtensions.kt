@@ -105,3 +105,20 @@ fun formatMinuteOfDay(minuteOfDay: Int): String {
     }
     return DateFormat.getTimeInstance(DateFormat.SHORT, Locale.getDefault()).format(calendar.time)
 }
+
+/**
+ * Walks the ContextWrapper chain to the hosting Activity.
+ *
+ * Compose's LocalContext is usually the Activity, but not always — a
+ * ContextThemeWrapper sits in between under some configurations, and
+ * Credential Manager throws rather than degrading when it is handed a
+ * non-Activity context.
+ */
+fun Context.findActivity(): android.app.Activity? {
+    var current: Context? = this
+    while (current is android.content.ContextWrapper) {
+        if (current is android.app.Activity) return current
+        current = current.baseContext
+    }
+    return null
+}

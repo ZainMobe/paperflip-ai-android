@@ -38,6 +38,7 @@ import com.wapp.paperflipai.R
 import com.wapp.paperflipai.app.LocalAppEnvironment
 import com.wapp.paperflipai.core.PFLinks
 import com.wapp.paperflipai.core.auth.AuthError
+import com.wapp.paperflipai.util.findActivity
 import com.wapp.paperflipai.designsystem.PFIcons
 import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFButtonSize
@@ -63,6 +64,12 @@ fun WelcomeAuthScreen(onChooseEmail: () -> Unit) {
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
+
+    // Offering a button that can only fail is worse than not offering it:
+    // without a web client id every tap ends at Supabase saying "bad id
+    // token", which reads like a bug rather than missing configuration.
+    val googleAvailable = env.google.isConfigured && activity != null
 
     var error by remember { mutableStateOf<String?>(null) }
     var isWorking by remember { mutableStateOf(false) }
@@ -122,12 +129,16 @@ fun WelcomeAuthScreen(onChooseEmail: () -> Unit) {
         ) {
             PFErrorBanner(error)
 
-            GoogleSignInButton(enabled = !isWorking) {
+            if (googleAvailable) GoogleSignInButton(enabled = !isWorking) {
                 scope.launch {
                     isWorking = true
                     error = null
                     try {
-                        val result = env.google.signIn()
+                        // Credential Manager renders a bottom sheet, so it
+                        // needs the Activity — the application context throws.
+                        val host = activity
+                            ?: throw AuthError.Unknown("Couldn't open Google sign-in.")
+                        val result = env.google.signIn(host)
                         env.auth.signInWithGoogle(result)
                         // The root router observes the session and swaps screens.
                     } catch (cancelled: AuthError.UserCancelled) {
