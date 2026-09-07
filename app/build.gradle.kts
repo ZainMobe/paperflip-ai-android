@@ -105,6 +105,11 @@ dependencies {
     // Animation
     implementation(libs.lottie.compose)
 
+    // HTTP. One artifact, deliberately: Supabase's own Kotlin SDK pulls in
+    // Ktor plus a dozen transitive modules, and PostgREST / Edge Functions /
+    // Storage are plain REST — see SupabaseClient.
+    implementation(libs.okhttp)
+
     // Home screen widget
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)

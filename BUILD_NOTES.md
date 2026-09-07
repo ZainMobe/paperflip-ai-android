@@ -466,6 +466,74 @@ and a `paperflip://import` deep link behind the "New deck" shortcut.
 
 ---
 
+## 5a. Supabase is live
+
+`AppEnvironment` now builds real services when `local.properties` carries
+`SUPABASE_URL` + `SUPABASE_ANON_KEY`, and Mocks when it doesn't — so a fresh
+clone still runs fully offline, exactly like the iOS target without
+`Config.xcconfig`. Project `bkixauovgbcinaagmusi`.
+
+**Three files, one dependency.**
+
+* `core/network/SupabaseClient.kt` — PostgREST, Edge Functions and Storage
+  over OkHttp. Not the official Kotlin SDK: it pulls Ktor plus a dozen
+  transitive modules, and everything here is REST with two headers. Against a
+  build that cannot be verified locally, one artifact is a far better trade
+  than a dependency graph.
+* `core/network/SupabaseRemoteStore.kt` — all 38 `RemoteStore` methods.
+* `core/auth/SupabaseAuthService.kt` — all 13 `AuthService` methods against
+  GoTrue.
+
+**Why auth is constructed first.** The REST client resolves its bearer token
+from the auth service on *every* request, through a `suspend` lambda rather
+than a captured value, because that is where an expiring token gets
+refreshed. `AppEnvironment` therefore holds `supabaseAuth` as its own field
+instead of reading it back off the `AuthService` interface.
+
+**The refresh is mutex-guarded on purpose.** Supabase rotates the refresh
+token on every use, so two parallel refreshes mean the second invalidates the
+first and the user is silently signed out. `validAccessToken()` refreshes
+inside a lock and re-checks after acquiring it, so a burst of concurrent
+requests produces exactly one refresh.
+
+**Two schema traps worth knowing**, both inherited from iOS:
+
+* Storage paths must use the **lowercased** user id. Postgres renders
+  `auth.uid()::text` in lowercase and the bucket policy compares it as text,
+  so an uppercase UUID fails every upload.
+* `createProject` is three steps — mint the id locally, insert, add the owner
+  membership row, then read back. The SELECT policy on `projects` requires
+  membership, so a `return=representation` insert would write the row and then
+  fail to read it.
+
+**What is still mocked:** `EntitlementStore`. Pro state is local until
+Play Billing / RevenueCat exists, even though `profiles.plan` is the server's
+truth and `snapshot()` already fetches it. Reading the entitlement off the
+profile would be a small, real improvement before billing lands.
+
+### Security fix applied to the database
+
+`increment_deck_generation(uuid)` and `get_decks_generated_this_month(uuid)`
+were `SECURITY DEFINER`, took an arbitrary user id, and had `EXECUTE` granted
+to `anon`. Anyone holding the anon key — which ships inside every client
+binary — could `POST /rest/v1/rpc/increment_deck_generation` with any user's
+UUID and exhaust their monthly quota, unauthenticated. Both are now
+`service_role` only; the `generate-flashcards` function that legitimately
+calls them is unaffected.
+
+`is_project_member()` and `project_role_for_user()` carry the same advisor
+warning and were deliberately **left alone**: they are RLS helpers, and
+Postgres evaluates policy expressions as the invoking role, so revoking
+`EXECUTE` there breaks row-level security rather than tightening it. Don't
+"fix" all five at once.
+
+Still open on the project: leaked-password protection is disabled (one toggle
+in Auth settings), and `handle_new_user()` is still callable by `anon` — it is
+a trigger function that should not be reachable over the API, but revoking it
+needs a signup test first.
+
+---
+
 ## 6. Google sign-in — the one thing left to wire
 
 `core/auth/GoogleSignInCoordinator.kt` exposes the real contract —

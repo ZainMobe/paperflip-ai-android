@@ -12,6 +12,9 @@ import com.wapp.paperflipai.core.data.PaperflipRepository
 import com.wapp.paperflipai.core.monetization.EntitlementStore
 import com.wapp.paperflipai.core.monetization.MockEntitlementStore
 import com.wapp.paperflipai.core.network.MockRemoteStore
+import com.wapp.paperflipai.core.network.SupabaseRemoteStore
+import com.wapp.paperflipai.core.network.SupabaseClient
+import com.wapp.paperflipai.core.auth.SupabaseAuthService
 import com.wapp.paperflipai.core.network.NetworkMonitor
 import com.wapp.paperflipai.core.network.RemoteStore
 import com.wapp.paperflipai.core.notifications.NotificationsClient
@@ -53,12 +56,39 @@ class AppEnvironment(context: Context) {
     val google = GoogleSignInCoordinator(appContext)
 
     /**
-     * Real implementations land here as one-line swaps once the matching
-     * SDK is added — the rest of the app is already written against the
-     * interfaces.
+     * Live services when `local.properties` carries the Supabase config,
+     * Mocks otherwise — so a fresh clone still runs, fully offline, exactly
+     * like the iOS target does without `Config.xcconfig`.
+     *
+     * Auth is constructed first because the REST client resolves its bearer
+     * token from it on every request (and refreshes an expiring one there),
+     * which is why [supabaseAuth] is held separately rather than being read
+     * back off the [AuthService] interface.
      */
-    val auth: AuthService = MockAuthService(sessionStore)
-    val remote: RemoteStore = MockRemoteStore()
+    private val supabaseAuth: SupabaseAuthService? =
+        if (Secrets.hasSupabaseConfig) {
+            SupabaseAuthService(Secrets.supabaseUrl!!, Secrets.supabaseAnonKey!!, sessionStore)
+        } else {
+            null
+        }
+
+    val auth: AuthService = supabaseAuth ?: MockAuthService(sessionStore)
+
+    val remote: RemoteStore =
+        if (supabaseAuth != null) {
+            SupabaseRemoteStore(
+                SupabaseClient(
+                    baseUrl = Secrets.supabaseUrl!!,
+                    anonKey = Secrets.supabaseAnonKey!!,
+                    accessToken = { supabaseAuth.validAccessToken() },
+                )
+            )
+        } else {
+            MockRemoteStore()
+        }
+
+    // Still mocked: Google Play Billing / RevenueCat has no implementation
+    // yet, so entitlement stays local. Everything else is live.
     val entitlements: EntitlementStore = MockEntitlementStore(appContext)
 
     val sync = SyncEngine(remote, database, networkMonitor)
