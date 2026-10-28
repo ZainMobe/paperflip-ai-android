@@ -1,6 +1,8 @@
 package com.wapp.paperflipai.core.network
 
+import com.wapp.paperflipai.core.data.CardExplanationDto
 import com.wapp.paperflipai.core.data.DeckDto
+import com.wapp.paperflipai.core.data.GenerationJobDto
 import com.wapp.paperflipai.core.data.FolderDto
 import com.wapp.paperflipai.core.data.GenerationRequest
 import com.wapp.paperflipai.core.data.NotificationDto
@@ -13,6 +15,7 @@ import com.wapp.paperflipai.core.data.ProjectJoinRequestDto
 import com.wapp.paperflipai.core.data.ProjectMemberDto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.coroutines.flow.Flow
 import java.util.UUID
 
 /**
@@ -107,6 +110,28 @@ interface RemoteStore {
      * freshly created deck with cards already generated.
      */
     suspend fun generateDeck(request: GenerationRequest, userId: String): DeckDto
+
+    /**
+     * Starts an async generation job (`generate-deck-job`) and returns its
+     * id at once. The deck is written by the server in the background;
+     * follow it with [watchGenerationJob].
+     */
+    suspend fun startGenerationJob(request: GenerationRequest): String
+
+    /**
+     * Emits the job row each time it is read, finishing after the first
+     * `done` or `failed`. Android polls PostgREST (iOS adds Realtime on top);
+     * a job takes 10 to 60 seconds, so a short poll costs nothing visible.
+     */
+    fun watchGenerationJob(jobId: String): Flow<GenerationJobDto>
+
+    /** Calls `explain-card`: a plain explanation, an example and a memory aid. */
+    suspend fun explainCard(
+        front: String,
+        back: String,
+        deckTitle: String?,
+        language: String?,
+    ): CardExplanationDto
 
     // ── Storage ───────────────────────────────────────────────────────
 

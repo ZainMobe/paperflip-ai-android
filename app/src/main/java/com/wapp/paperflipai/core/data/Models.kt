@@ -30,7 +30,16 @@ enum class PFPlan(val raw: String) {
 
 @Serializable
 enum class PFSourceType(val raw: String) {
-    Youtube("youtube"), Pdf("pdf"), Article("article");
+    Youtube("youtube"), Pdf("pdf"), Article("article"),
+    /** Pasted notes, pasted term/definition pairs, or an Anki import. */
+    Text("text"),
+    /** Text recognised on the device from one or more photos. */
+    Photo("photo"),
+    /** A lecture recording or audio file, transcribed on the device. */
+    Audio("audio");
+
+    /** Sources whose [PFDeck.sourceRef] is a link the user can open. */
+    val hasOpenableLink: Boolean get() = this == Youtube || this == Article
 
     companion object {
         fun from(raw: String?): PFSourceType = entries.firstOrNull { it.raw == raw } ?: Pdf
@@ -141,6 +150,12 @@ data class PFDeck(
     val updatedAt: Long = System.currentTimeMillis(),
     /** Last time the user studied this deck. Null = never. Local-only. */
     val lastStudiedAt: Long? = null,
+    /**
+     * Study-plan target (epoch millis, start of the exam day). When set,
+     * [com.wapp.paperflipai.core.srs.StudyPlan] paces new cards so every
+     * card has been seen before this date. Local-only.
+     */
+    val examDate: Long? = null,
 )
 
 // MARK: - Card
@@ -168,6 +183,12 @@ data class PFFlashcard(
     val srsDueDate: Long = 0L,
     /** Epoch millis last reviewed (for stats). Null = never reviewed. */
     val srsLastReviewedAt: Long? = null,
+
+    // ── "Explain this card" cache. Filled once by the explain-card Edge
+    //    Function, reused afterwards, cleared when the card text changes.
+    val explanation: String? = null,
+    val explanationExample: String? = null,
+    val explanationMnemonic: String? = null,
 )
 
 // MARK: - Project
@@ -219,6 +240,34 @@ data class PFProjectInvite(
     val projectName: String? = null,
     val inviterName: String? = null,
 )
+
+// MARK: - Quiz result (quiz mode and practice tests; local-only)
+
+@Serializable
+enum class QuizMode(val raw: String) {
+    Quiz("quiz"), Test("test");
+
+    companion object {
+        fun from(raw: String?): QuizMode = entries.firstOrNull { it.raw == raw } ?: Quiz
+    }
+}
+
+@Serializable
+data class PFQuizResult(
+    val id: String = newId(),
+    val deckId: String,
+    val mode: QuizMode,
+    val startedAt: Long,
+    val endedAt: Long = System.currentTimeMillis(),
+    val questionCount: Int,
+    val correctCount: Int,
+    /** Seconds allowed for a timed test; null when untimed. */
+    val timeLimitSeconds: Int? = null,
+) {
+    val scorePercent: Int
+        get() = if (questionCount == 0) 0
+        else Math.round(correctCount * 100f / questionCount)
+}
 
 // MARK: - Study session
 

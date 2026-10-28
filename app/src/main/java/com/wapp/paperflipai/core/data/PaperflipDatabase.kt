@@ -45,6 +45,7 @@ data class PaperflipSnapshot(
     val projects: List<PFProject> = emptyList(),
     val members: List<PFProjectMember> = emptyList(),
     val invites: List<PFProjectInvite> = emptyList(),
+    val quizResults: List<PFQuizResult> = emptyList(),
 )
 
 class PaperflipDatabase(
@@ -174,8 +175,16 @@ class PaperflipDatabase(
             decks = snap.decks.filterNot { it.id == id },
             cards = snap.cards.filterNot { it.deckId == id },
             sessions = snap.sessions.filterNot { it.deckId == id },
+            quizResults = snap.quizResults.filterNot { it.deckId == id },
         )
     }
+
+    fun addQuizResult(result: PFQuizResult) = update { snap ->
+        snap.copy(quizResults = snap.quizResults.upsert(result) { it.id == result.id })
+    }
+
+    fun quizResults(deckId: String): List<PFQuizResult> =
+        _snapshot.value.quizResults.filter { it.deckId == deckId }.sortedByDescending { it.endedAt }
 
     fun upsertCard(card: PFFlashcard) = update { snap ->
         snap.copy(cards = snap.cards.upsert(card) { it.id == card.id })

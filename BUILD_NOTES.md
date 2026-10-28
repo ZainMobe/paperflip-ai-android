@@ -699,3 +699,60 @@ Android, and it is what keeps the app legible in Arabic.
   of sync, the widget and the daily reminder.
 * App Links (`https://paperflip.ai/...`) declare `autoVerify="true"` but
   need `assetlinks.json` hosted on the domain to actually verify.
+
+## 12. October 2026 feature port (phases 1 to 3 from iOS)
+
+Everything below mirrors the iOS work of the same date. None of it has been
+compiled with Gradle yet; the pure Kotlin parts (QuizEngine, CardTextParser,
+UrlExtractor, StudyPlan, StudyQueue) were compiled and their unit tests pass
+(61 tests including the existing SRS suites).
+
+### What was added
+- **Async generation.** `RemoteStore.startGenerationJob` POSTs to
+  `generate-deck-job` and `watchGenerationJob` polls `generation_jobs`
+  every 2.5 s (iOS uses Realtime; Android polls to avoid a websocket client).
+  `GeneratingDeckContent` shows the real job status per source type.
+- **New sources:** Notes (`text`), Scan pages (`photo`, ML Kit OCR on device,
+  Latin and Devanagari), Lecture (`audio`, recorded or picked, transcribed on
+  device with `SpeechRecognizer` fed from a PCM pipe). Article links are
+  extracted from pasted text (`UrlExtractor`).
+- **Plan-based PDF limits** (`SourceLimits`): 5 MB free, 25 MB Pro, with an
+  upsell when a free user picks a bigger file.
+- **Imports without AI:** Paste cards (`CardTextParser`, tab, dash, colon,
+  semicolon or comma) and Anki `.apkg` (`AnkiPackageImporter`, legacy
+  collection.anki2/anki21 only). Both open `ImportReviewScreen`.
+- **Quiz, Practice test and Match** from Deck detail; results stored as
+  `PFQuizResult` in the snapshot and shown under Recent scores.
+- **Exam date study plan** (`StudyPlan`, `ExamDateSheet`): daily new cards are
+  paced to the exam; Study home, the deck screen and the widget use
+  `StudyQueue.plannedCount`.
+- **Explain this card** (`ExplainCardSheet`, `explain-card` function), cached
+  on the card and cleared when the card text changes.
+- **Read aloud** (`SpeechReader`, `SpeakButton`) on both card faces.
+- **Review prompt** (`ReviewPromptCoordinator`, Play In-App Review) after the
+  second successful deck, at most every 30 days.
+- **Paywall:** yearly first with a Best value pill and the 7-day trial line,
+  "Start free trial" CTA, trial legal copy, new PDF and auto count features.
+  The mock store now lists $44.99/yr and $7.99/mo to match the stores.
+
+### New dependencies and manifest entries
+- `play-services-mlkit-text-recognition` 19.0.1 and the Devanagari variant
+  16.0.1 (unbundled: models download through Play, see the
+  `com.google.mlkit.vision.DEPENDENCIES` meta-data).
+- `com.google.android.play:review` 2.0.2.
+- `RECORD_AUDIO` permission (asked when the user taps Record), optional
+  camera and microphone features, a `FileProvider`
+  (`${applicationId}.fileprovider`, `res/xml/file_paths.xml`, cache `scans/`),
+  and `<queries>` for RecognitionService, TTS_SERVICE and IMAGE_CAPTURE.
+
+### Strings
+New copy lives in `res/values*/strings_features.xml` (en, fr, es, ar),
+hand-maintained, with positional placeholders. Do not move it into
+`strings_generated.xml`.
+
+### Platform differences to know
+- No Arabic or Urdu OCR: ML Kit has no model for those scripts.
+- Lecture transcription needs the phone's offline speech pack; the first use
+  in a language may report that it is downloading.
+- Play Billing is still mocked (`MockEntitlementStore`), so trial eligibility
+  is not checked on Android yet.

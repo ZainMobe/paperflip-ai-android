@@ -44,6 +44,9 @@ import com.wapp.paperflipai.designsystem.modifier.pfPressable
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.TrackScreen
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Owner-only: invite a collaborator by email with a role — the Android
@@ -55,6 +58,7 @@ fun InviteMemberSheet(
     onDismiss: () -> Unit,
     onSent: () -> Unit,
 ) {
+    TrackScreen("project_invite", "InviteMemberSheet")
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
 
@@ -142,6 +146,7 @@ fun InviteMemberSheet(
                         error = null
                         try {
                             env.remote.inviteProjectMember(project.id, trimmed, role)
+                            PFAnalytics.log(AnalyticsEvent.projectMemberInvited)
                             PFToast.success(sentTitle, trimmed)
                             onSent()
                         } catch (failure: Exception) {

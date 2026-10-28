@@ -25,6 +25,8 @@ import com.wapp.paperflipai.designsystem.component.PFTopBar
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFAppearance
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * System / Light / Dark — the Android counterpart of
@@ -59,7 +61,10 @@ fun AppearanceSettingsScreen(onBack: () -> Unit) {
                         ),
                         icon = mode.icon,
                         showChevron = false,
-                        onClick = { env.settings.setAppearance(mode) },
+                        onClick = {
+                            if (mode != selected) PFAnalytics.log(AnalyticsEvent.appearanceChanged(mode.rawValue))
+                            env.settings.setAppearance(mode)
+                        },
                         trailing = if (selected == mode) {
                             {
                                 Icon(

@@ -17,6 +17,10 @@ import androidx.navigation.navArgument
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import java.net.URLDecoder
 import java.net.URLEncoder
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.navigation.compose.currentBackStackEntryAsState
 
 /**
  * Wraps the auth screens in their own nav graph — the Android counterpart of
@@ -42,6 +46,21 @@ private object AuthRoute {
 @Composable
 fun AuthFlow() {
     val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+
+    DisposableEffect(currentRoute) {
+        val screen = when (currentRoute) {
+            AuthRoute.WELCOME -> "auth_welcome" to "WelcomeAuthScreen"
+            AuthRoute.SIGN_IN -> "auth_email_sign_in" to "EmailSignInScreen"
+            AuthRoute.SIGN_UP -> "auth_email_sign_up" to "EmailSignUpScreen"
+            AuthRoute.OTP -> "auth_otp_verify" to "OtpVerifyScreen"
+            AuthRoute.FORGOT -> "auth_forgot_password" to "ForgotPasswordFlow"
+            else -> null
+        }
+        screen?.let { (name, screenClass) -> PFAnalytics.screen(name, screenClass) }
+        onDispose { screen?.let { PFAnalytics.screenLeft(it.first) } }
+    }
 
     Box(
         Modifier

@@ -35,6 +35,7 @@ import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.copyToClipboard
 import com.wapp.paperflipai.util.shareText
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * Public-link sharing for a deck — the Android counterpart of the private
@@ -48,6 +49,7 @@ fun ShareDeckSheet(
     onToggle: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    TrackScreen("deck_share", "ShareDeckSheet")
     val context = LocalContext.current
     val shareUrl = PFLinks.sharedDeck(deck.id.lowercase())
     val copiedLabel = stringResource(R.string.copy_link)

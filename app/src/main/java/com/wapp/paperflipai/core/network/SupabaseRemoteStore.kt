@@ -1,6 +1,8 @@
 package com.wapp.paperflipai.core.network
 
+import com.wapp.paperflipai.core.data.CardExplanationDto
 import com.wapp.paperflipai.core.data.DeckDto
+import com.wapp.paperflipai.core.data.GenerationJobDto
 import com.wapp.paperflipai.core.data.FolderDto
 import com.wapp.paperflipai.core.data.GenerationRequest
 import com.wapp.paperflipai.core.data.NotificationDto
@@ -13,6 +15,11 @@ import com.wapp.paperflipai.core.data.ProjectJoinRequestDto
 import com.wapp.paperflipai.core.data.ProjectMemberDto
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -182,6 +189,66 @@ class SupabaseRemoteStore(
         throwIfError(body)
         return runCatching { json.decodeFromString(DeckDto.serializer(), body) }
             .getOrElse { throw RemoteStoreError.Unknown("No deck was returned by the server.") }
+    }
+
+    // ── Async generation ──────────────────────────────────────────────
+
+    override suspend fun startGenerationJob(request: GenerationRequest): String {
+        val body = client.invoke(
+            "generate-deck-job",
+            json.encodeToString(GenerationRequest.serializer(), request),
+        )
+        throwIfError(body)
+        return stringField(body, "job_id")
+            ?: throw RemoteStoreError.Unknown("The server didn't start the job.")
+    }
+
+    override fun watchGenerationJob(jobId: String): Flow<GenerationJobDto> = flow {
+        var consecutiveFailures = 0
+        // Quick first read: the job usually leaves "queued" within a second.
+        delay(800)
+        while (currentCoroutineContext().isActive) {
+            try {
+                val body = client.rest(
+                    method = "GET",
+                    table = "generation_jobs",
+                    query = "select=id,status,deck,error_code,error_message&id=eq.${SupabaseClient.enc(jobId)}",
+                    single = true,
+                )
+                val job = json.decodeFromString(GenerationJobDto.serializer(), body)
+                consecutiveFailures = 0
+                emit(job)
+                if (job.isFinished) return@flow
+            } catch (failure: RemoteStoreError.NotAuthenticated) {
+                throw failure
+            } catch (failure: Exception) {
+                // A dropped connection mid-wait is normal on mobile; give up
+                // only after ~30 s of consecutive failures.
+                consecutiveFailures += 1
+                if (consecutiveFailures >= 8) throw failure
+            }
+            delay(POLL_INTERVAL_MS)
+        }
+    }
+
+    override suspend fun explainCard(
+        front: String,
+        back: String,
+        deckTitle: String?,
+        language: String?,
+    ): CardExplanationDto {
+        val payload = buildJsonObject {
+            put("front", front)
+            put("back", back)
+            deckTitle?.let { put("deck_title", it) }
+            language?.let { put("language", it) }
+        }.toString()
+        val body = client.invoke("explain-card", payload)
+        throwIfError(body)
+        return runCatching { json.decodeFromString(CardExplanationDto.serializer(), body) }
+            .getOrNull()
+            ?.takeIf { it.explanation.isNotBlank() }
+            ?: throw RemoteStoreError.Unknown("Couldn't write an explanation right now. Try again.")
     }
 
     // ── Storage ───────────────────────────────────────────────────────
@@ -545,4 +612,8 @@ class SupabaseRemoteStore(
 
     private fun kotlinx.serialization.json.JsonElement.jsonArrayOrEmpty() =
         (this as? kotlinx.serialization.json.JsonArray) ?: kotlinx.serialization.json.JsonArray(emptyList())
+
+    private companion object {
+        const val POLL_INTERVAL_MS = 2_500L
+    }
 }

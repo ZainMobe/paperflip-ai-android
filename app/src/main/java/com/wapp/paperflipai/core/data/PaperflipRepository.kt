@@ -4,6 +4,9 @@ import android.util.Log
 import com.wapp.paperflipai.core.network.RemoteStore
 import com.wapp.paperflipai.core.srs.SM2
 import com.wapp.paperflipai.core.srs.SRSResponse
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import kotlinx.coroutines.CancellationException
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
 
 /**
  * Write path for everything the user does to their library.
@@ -50,6 +53,7 @@ class PaperflipRepository(
 
     suspend fun renameDeck(deck: PFDeck, title: String) {
         val updated = deck.copy(title = title, updatedAt = System.currentTimeMillis())
+        PFAnalytics.log(AnalyticsEvent.deckRenamed)
         database.upsertDeck(updated)
         pushDeck(updated)
     }
@@ -66,9 +70,11 @@ class PaperflipRepository(
         database.upsertDeck(updated)
         return try {
             remote.setDeckProject(deck.id, projectId)
+            if (projectId != null) PFAnalytics.log(AnalyticsEvent.deckMovedToProject)
             true
         } catch (error: Exception) {
             Log.w(TAG, "setDeckProject failed, reverting", error)
+            PFAnalytics.error(error, "move_deck_to_project")
             database.upsertDeck(deck)
             false
         }
@@ -79,15 +85,18 @@ class PaperflipRepository(
         database.upsertDeck(updated)
         return try {
             remote.setDeckPublic(deck.id, isPublic)
+            PFAnalytics.log(AnalyticsEvent.deckSharingChanged(isPublic))
             true
         } catch (error: Exception) {
             Log.w(TAG, "setDeckPublic failed, reverting", error)
+            PFAnalytics.error(error, "set_deck_public")
             database.upsertDeck(deck)
             false
         }
     }
 
     suspend fun deleteDeck(deck: PFDeck) {
+        PFAnalytics.log(AnalyticsEvent.deckDeleted)
         database.deleteDeck(deck.id)
         push { remote.deleteDeck(deck.id) }
     }
@@ -115,11 +124,45 @@ class PaperflipRepository(
     }
 
     suspend fun updateCard(deck: PFDeck, card: PFFlashcard, front: String, back: String, hint: String?) {
+        val textChanged = card.front != front || card.back != back
         database.upsertCard(
-            card.copy(front = front, back = back, hint = hint, updatedAt = System.currentTimeMillis())
+            card.copy(
+                front = front,
+                back = back,
+                hint = hint,
+                updatedAt = System.currentTimeMillis(),
+                // A cached explanation describes the old text; drop it.
+                explanation = if (textChanged) null else card.explanation,
+                explanationExample = if (textChanged) null else card.explanationExample,
+                explanationMnemonic = if (textChanged) null else card.explanationMnemonic,
+            )
         )
         touchAndPush(deck)
     }
+
+    /** Caches an "Explain this card" result. Local-only, never pushed. */
+    fun saveExplanation(cardId: String, explanation: CardExplanationDto) {
+        val card = database.snapshot.value.cards.firstOrNull { it.id == cardId } ?: return
+        database.upsertCard(
+            card.copy(
+                explanation = explanation.explanation,
+                explanationExample = explanation.example,
+                explanationMnemonic = explanation.mnemonic,
+            )
+        )
+    }
+
+    // ── Study plan ────────────────────────────────────────────────────
+
+    /** Sets or clears a deck's exam date. Local-only, like lastStudiedAt. */
+    fun setExamDate(deckId: String, examDate: Long?) {
+        val deck = database.deck(deckId) ?: return
+        database.upsertDeck(deck.copy(examDate = examDate))
+    }
+
+    // ── Quizzes ───────────────────────────────────────────────────────
+
+    fun saveQuizResult(result: PFQuizResult) = database.addQuizResult(result)
 
     suspend fun deleteCard(deck: PFDeck, cardId: String) {
         database.deleteCard(cardId)
@@ -166,6 +209,7 @@ class PaperflipRepository(
             block()
         } catch (error: Exception) {
             Log.w(TAG, "Remote push failed; local change stands", error)
+            if (error !is CancellationException) PFAnalytics.error(error, "remote_push")
         }
     }
 

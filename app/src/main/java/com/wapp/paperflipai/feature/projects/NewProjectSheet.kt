@@ -34,6 +34,9 @@ import com.wapp.paperflipai.designsystem.component.PFSheet
 import com.wapp.paperflipai.designsystem.component.PFTextField
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.TrackScreen
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Create a project — the Android counterpart of `NewProjectSheet.swift`.
@@ -44,6 +47,7 @@ fun NewProjectSheet(
     onDismiss: () -> Unit,
     onCreated: (String) -> Unit,
 ) {
+    TrackScreen("project_new", "NewProjectSheet")
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
 
@@ -128,6 +132,7 @@ fun NewProjectSheet(
                                 ownerUserId = userId,
                             )
                             env.database.upsertProject(dto.toModel())
+                            PFAnalytics.log(AnalyticsEvent.projectCreated)
                             env.sync.pullProjects(userId)
                             onCreated(dto.id)
                         } catch (failure: Exception) {

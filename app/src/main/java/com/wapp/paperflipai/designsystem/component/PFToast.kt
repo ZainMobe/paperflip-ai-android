@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.UUID
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Lightweight, top-anchored toast system — the Android counterpart of
@@ -75,6 +76,7 @@ object PFToast {
     val current: StateFlow<PFToastData?> = _current.asStateFlow()
 
     fun show(style: PFToastStyle, title: String, message: String? = null, durationMillis: Long = 3000L) {
+        if (style == PFToastStyle.Error) PFAnalytics.errorShown(title, message)
         _current.value = PFToastData(style = style, title = title, message = message, durationMillis = durationMillis)
     }
 

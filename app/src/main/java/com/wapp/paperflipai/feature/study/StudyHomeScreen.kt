@@ -68,8 +68,9 @@ fun StudyHomeScreen(
 
     val decks = snapshot.decks
     val cardsByDeck = remember(snapshot.cards) { snapshot.cards.groupBy { it.deckId } }
-    val dueByDeck = remember(cardsByDeck) {
-        cardsByDeck.mapValues { (_, cards) -> StudyQueue.dueCount(cards) }
+    val examDates = remember(decks) { decks.associate { it.id to it.examDate } }
+    val dueByDeck = remember(cardsByDeck, examDates) {
+        cardsByDeck.mapValues { (deckId, cards) -> StudyQueue.plannedCount(cards, examDates[deckId]) }
     }
     val totalDue = remember(dueByDeck) { dueByDeck.values.sum() }
     val decksWithDue = remember(decks, dueByDeck) {

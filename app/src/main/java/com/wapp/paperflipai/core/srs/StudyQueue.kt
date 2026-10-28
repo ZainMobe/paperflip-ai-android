@@ -42,6 +42,47 @@ object StudyQueue {
         return queue.take(limit)
     }
 
+    /**
+     * Today's queue for one deck. With an exam date set, new cards are paced
+     * by [StudyPlan] so a 200-card deck is not 200 new cards on day one;
+     * without one this is plain [dueCards].
+     */
+    fun plannedCards(
+        cards: List<PFFlashcard>,
+        examDate: Long?,
+        now: Long = System.currentTimeMillis(),
+        limit: Int = DEFAULT_LIMIT,
+    ): List<PFFlashcard> {
+        val plan = StudyPlan.make(examDate, cards, now) ?: return dueCards(cards, now, limit)
+        val reviews = cards
+            .filter { it.srsRepetitions > 0 && it.srsDueDate <= now }
+            .sortedBy { it.srsDueDate }
+        val newCards = cards
+            .filter { it.srsRepetitions == 0 }
+            .sortedBy { it.orderIndex }
+            .take(plan.newCardsStillToIntroduceToday)
+
+        val queue = ArrayList<PFFlashcard>(reviews.size + newCards.size)
+        val newIterator = newCards.iterator()
+        reviews.forEachIndexed { index, card ->
+            queue.add(card)
+            if ((index + 1) % 3 == 0 && newIterator.hasNext()) queue.add(newIterator.next())
+        }
+        while (newIterator.hasNext()) queue.add(newIterator.next())
+        // Close to the exam a plan may legitimately exceed the default cap.
+        return queue.take(maxOf(limit, plan.dailyTarget))
+    }
+
+    /** How many cards the user should do today for one deck. */
+    fun plannedCount(
+        cards: List<PFFlashcard>,
+        examDate: Long?,
+        now: Long = System.currentTimeMillis(),
+    ): Int {
+        val plan = StudyPlan.make(examDate, cards, now) ?: return dueCount(cards, now)
+        return plan.dueReviewsToday + plan.newCardsStillToIntroduceToday
+    }
+
     /** How many cards are due across a set of cards right now. */
     fun dueCount(cards: List<PFFlashcard>, now: Long = System.currentTimeMillis()): Int =
         cards.count { isDue(it, now) }

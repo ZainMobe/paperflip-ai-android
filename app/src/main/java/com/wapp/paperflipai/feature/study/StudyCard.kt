@@ -76,6 +76,8 @@ fun StudyCard(
     modifier: Modifier = Modifier,
     interactive: Boolean = true,
     onResponse: ((SRSResponse) -> Unit)? = null,
+    /** Opens "Explain this card". Only the top card of the stack gets one. */
+    onExplain: ((PFFlashcard) -> Unit)? = null,
 ) {
     var flipped by remember(card.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -108,6 +110,9 @@ fun StudyCard(
         }
     }
     val showAnswerLabel = stringResource(R.string.show_answer)
+    val explainLabel = stringResource(R.string.explain_action)
+    val readAloudLabel = stringResource(R.string.speak_read_aloud)
+    val speech = com.wapp.paperflipai.app.LocalAppEnvironment.current.speech
 
     fun commit(target: SwipeDirection) {
         haptics.perform(PFHaptic.Medium)
@@ -140,8 +145,17 @@ fun StudyCard(
             .semantics {
                 contentDescription = if (flipped) "$answerLabel. ${card.back}"
                 else "$questionLabel. ${card.front}"
-                customActions = listOf(
-                    CustomAccessibilityAction(showAnswerLabel) { flipped = true; true }
+                // TalkBack can't reach the buttons inside the merged card, so
+                // read-aloud and Explain are offered as actions here too.
+                customActions = listOfNotNull(
+                    CustomAccessibilityAction(showAnswerLabel) { flipped = true; true },
+                    CustomAccessibilityAction(readAloudLabel) {
+                        speech.toggle(if (flipped) card.back else card.front, "${card.id}-a11y")
+                        true
+                    }.takeIf { interactive },
+                    onExplain?.let { explain ->
+                        CustomAccessibilityAction(explainLabel) { explain(card); true }
+                    },
                 ) + actions
             }
             .then(
@@ -183,7 +197,7 @@ fun StudyCard(
                 alpha = if (flipRotation < 90f) 1f else 0f
             },
         ) {
-            CardFront(card)
+            CardFront(card, interactive)
         }
 
         // Back face (pre-rotated so it reads the right way round)
@@ -194,7 +208,7 @@ fun StudyCard(
                 alpha = if (flipRotation >= 90f) 1f else 0f
             },
         ) {
-            CardBack(card)
+            CardBack(card, interactive, onExplain)
         }
 
         // Directional feedback
@@ -255,7 +269,7 @@ private fun CardFace(
 }
 
 @Composable
-private fun CardFront(card: PFFlashcard) {
+private fun CardFront(card: PFFlashcard, interactive: Boolean) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(PFTheme.spacing.lg),
@@ -270,6 +284,10 @@ private fun CardFront(card: PFFlashcard) {
                     tint = PFTheme.colors.warning,
                     modifier = Modifier.size(18.dp),
                 )
+            }
+            if (interactive) {
+                Spacer(Modifier.width(PFTheme.spacing.sm))
+                SpeakButton(text = card.front, id = "${card.id}-front")
             }
         }
         Spacer(Modifier.weight(1f))
@@ -301,17 +319,25 @@ private fun CardFront(card: PFFlashcard) {
 }
 
 @Composable
-private fun CardBack(card: PFFlashcard) {
+private fun CardBack(
+    card: PFFlashcard,
+    interactive: Boolean,
+    onExplain: ((PFFlashcard) -> Unit)?,
+) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(PFTheme.spacing.lg),
     ) {
-        PFTagPill(
-            title = stringResource(R.string.answer),
-            icon = PFIcons.CheckCircle,
-            tint = PFTheme.colors.success,
-            prominent = true,
-        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            PFTagPill(
+                title = stringResource(R.string.answer),
+                icon = PFIcons.CheckCircle,
+                tint = PFTheme.colors.success,
+                prominent = true,
+            )
+            Spacer(Modifier.weight(1f))
+            if (interactive) SpeakButton(text = card.back, id = "${card.id}-back")
+        }
         Spacer(Modifier.weight(1f))
         Text(
             text = card.back,
@@ -344,6 +370,24 @@ private fun CardBack(card: PFFlashcard) {
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (onExplain != null) {
+                Row(
+                    modifier = Modifier
+                        .background(PFTheme.colors.accentSoft, CircleShape)
+                        .pfPressable(onClick = { onExplain(card) }, pressedScale = 0.96f)
+                        .padding(horizontal = PFTheme.spacing.md, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(PFIcons.Sparkle, null, tint = PFTheme.colors.accent, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(PFTheme.spacing.xs))
+                    Text(
+                        text = stringResource(R.string.explain_action),
+                        style = PFTheme.type.footnoteBold,
+                        color = PFTheme.colors.accent,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+            }
             Text(
                 text = stringResource(R.string.swipe_how_it_went),
                 style = PFTheme.type.caption,

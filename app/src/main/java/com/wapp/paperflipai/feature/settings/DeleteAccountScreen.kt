@@ -45,6 +45,8 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.openPlaySubscriptions
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Account deletion — the Android counterpart of `DeleteAccountView.swift`
@@ -246,9 +248,11 @@ fun DeleteAccountScreen(onBack: () -> Unit) {
                         isDeleting = true
                         try {
                             env.auth.deleteAccount()
+                            PFAnalytics.log(AnalyticsEvent.accountDeleted)
                             env.onSignedOut()
                         } catch (failure: Exception) {
                             error = failure.message
+                            PFAnalytics.error(failure, "delete_account")
                         } finally {
                             isDeleting = false
                         }

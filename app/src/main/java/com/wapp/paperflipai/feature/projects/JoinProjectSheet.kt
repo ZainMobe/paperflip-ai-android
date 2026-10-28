@@ -46,6 +46,9 @@ import com.wapp.paperflipai.designsystem.theme.PFElevation
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.TrackScreen
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Mirror of the web's `/projects/join/{token}` page — the Android
@@ -61,6 +64,7 @@ fun JoinProjectSheet(
     initialToken: String,
     onDismiss: () -> Unit,
 ) {
+    TrackScreen("project_join", "JoinProjectSheet")
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
 
@@ -261,6 +265,7 @@ fun JoinProjectSheet(
                                             requestedRole = selectedRole,
                                         )
                                         didSucceed = true
+                                        PFAnalytics.log(AnalyticsEvent.projectJoinRequested)
                                     } catch (failure: Exception) {
                                         submitError = failure.message
                                     } finally {

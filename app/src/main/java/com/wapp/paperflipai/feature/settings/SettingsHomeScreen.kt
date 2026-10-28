@@ -50,6 +50,9 @@ import com.wapp.paperflipai.designsystem.theme.PFAppearance
 import com.wapp.paperflipai.designsystem.theme.PFLanguage
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.openUrl
+import com.wapp.paperflipai.core.analytics.PaywallSource
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Tab 5 — account, subscription, app preferences, about and sign-out. The
@@ -137,7 +140,7 @@ fun SettingsHomeScreen(onNavigate: (String) -> Unit) {
                     showChevron = false,
                     onClick = {
                         if (entitlement.isActive) onNavigate(Route.SETTINGS_SUBSCRIPTION)
-                        else onNavigate(Route.PAYWALL)
+                        else onNavigate(Route.paywall(PaywallSource.Settings))
                     },
                     trailing = {
                         PFTagPill(
@@ -299,6 +302,7 @@ fun SettingsHomeScreen(onNavigate: (String) -> Unit) {
                             cancelTitle = cancelLabel,
                             destructive = true,
                         ) {
+                            PFAnalytics.log(AnalyticsEvent.signOut)
                             env.auth.signOut()
                             env.onSignedOut()
                         }

@@ -36,6 +36,8 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.modifier.rememberPFHaptics
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Email + password + optional name — the Android counterpart of
@@ -138,7 +140,9 @@ fun EmailSignUpScreen(onBack: () -> Unit) {
                                 password = password,
                                 fullName = fullName.trim().ifEmpty { null },
                             )
+                            PFAnalytics.log(AnalyticsEvent.signUp("email"))
                         } catch (failure: Exception) {
+                            PFAnalytics.log(AnalyticsEvent.authFailed("email", "sign_up", failure))
                             haptics.perform(PFHaptic.Error)
                             when (failure) {
                                 is AuthError.EmailAlreadyInUse -> emailError = failure.message

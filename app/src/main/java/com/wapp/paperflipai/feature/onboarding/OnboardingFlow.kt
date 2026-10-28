@@ -42,6 +42,10 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFMotion
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 
 /**
  * Three-page introduction shown on first launch — the Android counterpart of
@@ -72,6 +76,12 @@ fun OnboardingFlow(onFinish: () -> Unit) {
     val scope = rememberCoroutineScope()
     val isLast = pagerState.currentPage == onboardingPages.lastIndex
 
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect {
+            PFAnalytics.log(AnalyticsEvent.onboardingPageViewed(it))
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -94,7 +104,14 @@ fun OnboardingFlow(onFinish: () -> Unit) {
                     style = PFTheme.type.bodyEmphasis,
                     color = PFTheme.colors.onSurfaceMuted,
                     modifier = Modifier
-                        .pfPressable(onClick = onFinish, haptic = PFHaptic.Selection, pressedScale = 0.94f)
+                        .pfPressable(
+                            onClick = {
+                                PFAnalytics.log(AnalyticsEvent.onboardingSkipped(pagerState.currentPage))
+                                onFinish()
+                            },
+                            haptic = PFHaptic.Selection,
+                            pressedScale = 0.94f,
+                        )
                         .padding(PFTheme.spacing.sm),
                 )
             }
@@ -177,8 +194,10 @@ fun OnboardingFlow(onFinish: () -> Unit) {
             PFButton(
                 title = stringResource(if (isLast) R.string.get_started else R.string.continue_action),
                 onClick = {
-                    if (isLast) onFinish()
-                    else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                    if (isLast) {
+                        PFAnalytics.log(AnalyticsEvent.onboardingCompleted)
+                        onFinish()
+                    } else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
                 },
                 size = PFButtonSize.Lg,
                 trailingIcon = ctaIcon,

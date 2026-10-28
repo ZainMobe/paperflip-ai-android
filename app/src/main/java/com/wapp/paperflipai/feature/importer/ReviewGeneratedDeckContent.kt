@@ -69,7 +69,11 @@ import com.wapp.paperflipai.designsystem.theme.PFMotion
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.pfElevation
+import com.wapp.paperflipai.feature.library.icon
+import com.wapp.paperflipai.feature.library.tint
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Edit-before-save — the Android counterpart of
@@ -111,16 +115,8 @@ fun ReviewGeneratedDeckContent(
     var confirmation by remember { mutableStateOf<PFConfirmation?>(null) }
 
     val sourceType = PFSourceType.from(dto.sourceType)
-    val tint = when (sourceType) {
-        PFSourceType.Pdf -> PFTheme.colors.accent
-        PFSourceType.Youtube -> PFTheme.colors.danger
-        PFSourceType.Article -> PFTheme.colors.warning
-    }
-    val icon = when (sourceType) {
-        PFSourceType.Pdf -> PFIcons.Pdf
-        PFSourceType.Youtube -> PFIcons.Video
-        PFSourceType.Article -> PFIcons.Article
-    }
+    val tint = sourceType.tint()
+    val icon = sourceType.icon
 
     val discardTitle = stringResource(R.string.discard_this_deck)
     val discardMessage = stringResource(R.string.generated_card_will_be_lost_this_can_t_be_undo, cards.size, "")
@@ -378,6 +374,8 @@ fun ReviewGeneratedDeckContent(
                                 )
                             }
                             env.refreshWidget()
+                            PFAnalytics.log(AnalyticsEvent.deckSaved(dto.sourceType, cards.size, projectId != null))
+                            env.reviewPrompts.recordSuccess()
                             onSaved(saved.id)
                         }
                     },

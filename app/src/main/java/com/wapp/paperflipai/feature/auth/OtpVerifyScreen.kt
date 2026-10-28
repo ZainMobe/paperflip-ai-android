@@ -54,6 +54,8 @@ import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 enum class OtpMode { SignIn, PasswordRecovery }
 
@@ -105,7 +107,10 @@ fun OtpVerifyScreen(
         resendStatus = null
         try {
             when (mode) {
-                OtpMode.SignIn -> env.auth.verifyEmailOtp(email, code)
+                OtpMode.SignIn -> {
+                    env.auth.verifyEmailOtp(email, code)
+                    PFAnalytics.log(AnalyticsEvent.login("email_otp"))
+                }
                 OtpMode.PasswordRecovery -> {
                     env.auth.verifyPasswordResetOtp(email, code)
                     onRecoveryVerified()
@@ -113,6 +118,13 @@ fun OtpVerifyScreen(
             }
             haptics.perform(PFHaptic.Success)
         } catch (failure: Exception) {
+            PFAnalytics.log(
+                AnalyticsEvent.authFailed(
+                    "email_otp",
+                    if (mode == OtpMode.SignIn) "otp_verify" else "password_reset",
+                    failure,
+                )
+            )
             error = failure.message
             code = ""
             haptics.perform(PFHaptic.Error)

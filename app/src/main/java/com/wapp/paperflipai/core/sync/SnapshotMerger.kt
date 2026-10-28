@@ -36,8 +36,13 @@ internal object SnapshotMerger {
                 decks.add(existing)
                 cards.addAll(cardsByDeck[existing.id].orEmpty())
             } else {
-                // lastStudiedAt is local-only — the server never sends it.
-                decks.add(dto.toDeck().copy(lastStudiedAt = existing?.lastStudiedAt))
+                // lastStudiedAt and examDate are local-only; the server never sends them.
+                decks.add(
+                    dto.toDeck().copy(
+                        lastStudiedAt = existing?.lastStudiedAt,
+                        examDate = existing?.examDate,
+                    )
+                )
                 cards.addAll(preserveSrs(dto.toCards(), cardsByDeck[dto.id].orEmpty()))
             }
         }
@@ -55,6 +60,7 @@ internal object SnapshotMerger {
             decks = decks,
             cards = cards,
             sessions = local.sessions.filter { it.deckId == null || it.deckId in liveDeckIds },
+            quizResults = local.quizResults.filter { it.deckId in liveDeckIds },
             projects = if (snapshot.projects.isEmpty()) local.projects
             else snapshot.projects.map { it.toModel() },
             members = if (snapshot.projectMembers.isEmpty()) local.members
@@ -76,12 +82,17 @@ internal object SnapshotMerger {
         val byFront = existing.associateBy { it.front.trim().lowercase() }
         return incoming.map { card ->
             val match = byId[card.id] ?: byFront[card.front.trim().lowercase()] ?: return@map card
+            // The explanation cache survives only if the text it explains is unchanged.
+            val sameText = match.front == card.front && match.back == card.back
             card.copy(
                 srsEase = match.srsEase,
                 srsInterval = match.srsInterval,
                 srsRepetitions = match.srsRepetitions,
                 srsDueDate = match.srsDueDate,
                 srsLastReviewedAt = match.srsLastReviewedAt,
+                explanation = if (sameText) match.explanation else null,
+                explanationExample = if (sameText) match.explanationExample else null,
+                explanationMnemonic = if (sameText) match.explanationMnemonic else null,
             )
         }
     }

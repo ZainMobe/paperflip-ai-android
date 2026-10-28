@@ -25,6 +25,7 @@ import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFButtonSize
 import com.wapp.paperflipai.designsystem.component.PFSheet
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * One-time notice before the AI support chat — the Android counterpart of
@@ -35,6 +36,7 @@ fun AIConsentSheet(
     onDismiss: () -> Unit,
     onAcknowledge: () -> Unit,
 ) {
+    TrackScreen("ai_consent", "AIConsentSheet")
     PFSheet(onDismiss = onDismiss, title = stringResource(R.string.before_you_chat)) {
         Column(
             modifier = Modifier

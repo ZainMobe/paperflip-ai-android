@@ -37,6 +37,10 @@ import com.wapp.paperflipai.designsystem.component.PFToast
 import com.wapp.paperflipai.designsystem.modifier.pfPressable
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import androidx.compose.runtime.LaunchedEffect
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 private val UUID_REGEX =
     Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOption.IGNORE_CASE)
@@ -48,6 +52,7 @@ private val UUID_REGEX =
  */
 @Composable
 fun SharedLinkImportSheet(onDismiss: () -> Unit) {
+    TrackScreen("import_shared_link", "SharedLinkImportSheet")
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -132,11 +137,13 @@ fun SharedLinkImportSheet(onDismiss: () -> Unit) {
                         error = null
                         try {
                             env.remote.importSharedDeck(trimmed)
+                            PFAnalytics.log(AnalyticsEvent.sharedDeckImported)
                             env.auth.session.value?.userId?.let { env.sync.pullAll(it) }
                             PFToast.success(importedLabel)
                             onDismiss()
                         } catch (failure: Exception) {
                             error = failure.message
+                            PFAnalytics.log(AnalyticsEvent.importFailed("shared_link", "import", failure.message ?: "none"))
                         } finally {
                             isImporting = false
                         }

@@ -30,6 +30,7 @@ fun CardStack(
     cards: List<PFFlashcard>,
     onResponse: (SRSResponse) -> Unit,
     modifier: Modifier = Modifier,
+    onExplain: ((PFFlashcard) -> Unit)? = null,
 ) {
     val visible = cards.take(3)
 
@@ -74,6 +75,7 @@ fun CardStack(
                     card = card,
                     interactive = index == 0,
                     onResponse = if (index == 0) onResponse else null,
+                    onExplain = if (index == 0) onExplain else null,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex((visible.size - index).toFloat())

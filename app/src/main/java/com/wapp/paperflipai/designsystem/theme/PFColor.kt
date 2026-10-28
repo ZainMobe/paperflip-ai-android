@@ -47,6 +47,8 @@ data class PFColors(
     val success: Color,
     val warning: Color,
     val danger: Color,
+    /** Informational blue: photo-scan source, quiz accents. */
+    val info: Color,
 
     // Study response colors (used by swipe gestures)
     val again: Color,
@@ -77,6 +79,7 @@ val PFLightColors = PFColors(
     success = Color(0xFF16A34A),
     warning = Color(0xFFD97706),
     danger = Color(0xFFDC2626),
+    info = Color(0xFF2563EB),
 
     again = Color(0xFFDC2626),
     hard = Color(0xFFEA580C),
@@ -106,6 +109,7 @@ val PFDarkColors = PFColors(
     success = Color(0xFF4ADE80),
     warning = Color(0xFFFBBF24),
     danger = Color(0xFFF87171),
+    info = Color(0xFF60A5FA),
 
     again = Color(0xFFF87171),
     hard = Color(0xFFFB923C),

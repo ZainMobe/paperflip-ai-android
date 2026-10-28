@@ -58,6 +58,8 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * The in-app AI support assistant — the Android counterpart of
@@ -96,8 +98,10 @@ fun SupportChatScreen(onBack: () -> Unit) {
             try {
                 val reply = env.remote.supportChat(messages.toList())
                 messages.add(SupportChatMessage.assistant(reply))
+                PFAnalytics.log(AnalyticsEvent.supportMessageSent)
             } catch (failure: Exception) {
                 error = failure.message
+                PFAnalytics.error(failure, "support_chat")
             } finally {
                 isThinking = false
             }

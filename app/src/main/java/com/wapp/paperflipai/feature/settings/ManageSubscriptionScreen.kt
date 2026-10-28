@@ -43,6 +43,8 @@ import com.wapp.paperflipai.designsystem.theme.PFElevation
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.openPlaySubscriptions
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * What Pro users see from the Subscription row — the Android counterpart of
@@ -151,8 +153,18 @@ fun ManageSubscriptionScreen(
                     onClick = {
                         scope.launch {
                             isRestoring = true
+                            PFAnalytics.log(AnalyticsEvent.restoreStarted("manage_subscription"))
                             val result = runCatching { env.entitlements.restorePurchases() }
                             isRestoring = false
+                            result.fold(
+                                onSuccess = {
+                                    PFAnalytics.log(
+                                        if (env.entitlements.entitlement.value.isActive) AnalyticsEvent.restoreCompleted("manage_subscription")
+                                        else AnalyticsEvent.restoreNoneFound("manage_subscription")
+                                    )
+                                },
+                                onFailure = { PFAnalytics.log(AnalyticsEvent.restoreFailed("manage_subscription", it)) },
+                            )
                             // Previously this toasted "restored" unconditionally —
                             // including when the call threw, which tells a paying
                             // user their purchase is back when it isn't.

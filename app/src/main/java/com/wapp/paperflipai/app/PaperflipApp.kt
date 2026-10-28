@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.wapp.paperflipai.R
@@ -27,6 +29,10 @@ import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.PaperflipTheme
 import com.wapp.paperflipai.feature.auth.AuthFlow
 import com.wapp.paperflipai.feature.onboarding.OnboardingFlow
+import com.wapp.paperflipai.util.findActivity
+import kotlinx.coroutines.delay
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import androidx.compose.runtime.DisposableEffect
 
 /**
  * The composition root — the Android counterpart of `Paperflip_AIApp` plus
@@ -51,6 +57,7 @@ fun PaperflipApp(environment: AppEnvironment) {
             ) {
                 RootRouter()
                 PFToastHost()
+                ReviewPromptHost()
             }
         }
     }
@@ -78,6 +85,16 @@ private fun RootRouter() {
         !hasOnboarded -> RootStage.Onboarding
         session == null -> RootStage.Auth
         else -> RootStage.Authenticated
+    }
+
+    DisposableEffect(stage) {
+        val screen = when (stage) {
+            RootStage.Launch -> "launch" to "LaunchSplash"
+            RootStage.Onboarding -> "onboarding" to "OnboardingFlow"
+            else -> null
+        }
+        screen?.let { (name, screenClass) -> PFAnalytics.screen(name, screenClass) }
+        onDispose { screen?.let { PFAnalytics.screenLeft(it.first) } }
     }
 
     AnimatedContent(
@@ -117,5 +134,22 @@ private fun LaunchSplash() {
             resId = R.raw.paperflip_ai_cards_lottie,
             modifier = Modifier.size(220.dp),
         )
+    }
+}
+
+/**
+ * Asks for a Play rating when [ReviewPromptCoordinator] says the moment is
+ * right. The delay lets the next screen settle first, the way iOS defers
+ * `requestReview` after a save.
+ */
+@Composable
+private fun ReviewPromptHost() {
+    val env = LocalAppEnvironment.current
+    val context = LocalContext.current
+    val pending by env.reviewPrompts.pendingPrompt.collectAsStateWithLifecycle()
+    LaunchedEffect(pending) {
+        if (!pending) return@LaunchedEffect
+        delay(1_500)
+        context.findActivity()?.let { env.reviewPrompts.launch(it) }
     }
 }

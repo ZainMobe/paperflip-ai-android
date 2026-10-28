@@ -40,6 +40,8 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.modifier.rememberPFHaptics
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Email + password sign-in — the Android counterpart of
@@ -145,8 +147,10 @@ fun EmailSignInScreen(
                             error = null
                             try {
                                 env.auth.signInWithEmail(email.trim(), password)
+                                PFAnalytics.log(AnalyticsEvent.login("email"))
                             } catch (failure: Exception) {
                                 error = failure.message
+                                PFAnalytics.log(AnalyticsEvent.authFailed("email", "sign_in", failure))
                                 haptics.perform(PFHaptic.Error)
                             } finally {
                                 isWorking = false
@@ -170,6 +174,7 @@ fun EmailSignInScreen(
                                 onCodeSent(email.trim())
                             } catch (failure: Exception) {
                                 error = failure.message
+                                PFAnalytics.log(AnalyticsEvent.authFailed("email_otp", "otp_send", failure))
                                 haptics.perform(PFHaptic.Error)
                             } finally {
                                 isWorking = false

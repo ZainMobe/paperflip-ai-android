@@ -400,21 +400,16 @@ private fun SessionRow(
 
 @Composable
 private fun SourceRow(type: PFSourceType, count: Int) {
-    val tint = when (type) {
-        PFSourceType.Pdf -> PFTheme.colors.accent
-        PFSourceType.Youtube -> PFTheme.colors.danger
-        PFSourceType.Article -> PFTheme.colors.warning
-    }
-    val icon = when (type) {
-        PFSourceType.Pdf -> PFIcons.Pdf
-        PFSourceType.Youtube -> PFIcons.Video
-        PFSourceType.Article -> PFIcons.Article
-    }
+    val tint = type.tint()
+    val icon = type.icon
     val label = stringResource(
         when (type) {
             PFSourceType.Pdf -> R.string.pdf
             PFSourceType.Youtube -> R.string.youtube
             PFSourceType.Article -> R.string.articles
+            PFSourceType.Text -> R.string.source_notes_plural
+            PFSourceType.Photo -> R.string.source_photos_plural
+            PFSourceType.Audio -> R.string.source_lectures_plural
         }
     )
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

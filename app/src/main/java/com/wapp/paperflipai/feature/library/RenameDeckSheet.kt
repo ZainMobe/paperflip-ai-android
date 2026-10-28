@@ -18,6 +18,7 @@ import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFSheet
 import com.wapp.paperflipai.designsystem.component.PFTextField
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * Rename a deck — the Android counterpart of `RenameDeckSheet.swift`.
@@ -28,6 +29,7 @@ fun RenameDeckSheet(
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
+    TrackScreen("deck_rename", "RenameDeckSheet")
     var draft by remember { mutableStateOf(currentTitle) }
     val trimmed = draft.trim()
     val canSave = trimmed.isNotEmpty() && trimmed != currentTitle

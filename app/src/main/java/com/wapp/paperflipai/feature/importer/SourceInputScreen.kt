@@ -57,6 +57,8 @@ import com.wapp.paperflipai.app.LocalAppEnvironment
 import com.wapp.paperflipai.core.data.DeckDto
 import com.wapp.paperflipai.core.data.GenerationRequest
 import com.wapp.paperflipai.core.data.PFSourceType
+import com.wapp.paperflipai.core.importing.SourceLimits
+import com.wapp.paperflipai.core.importing.UrlExtractor
 import com.wapp.paperflipai.designsystem.PFIcons
 import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFButtonSize
@@ -70,10 +72,16 @@ import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFGenerationLanguage
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.feature.library.icon
+import com.wapp.paperflipai.feature.library.tint
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.roundToInt
+import com.wapp.paperflipai.core.analytics.PaywallSource
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import androidx.compose.runtime.DisposableEffect
 
 /**
  * The whole import flow after a source is chosen — the Android counterpart
@@ -86,7 +94,8 @@ import kotlin.math.roundToInt
  */
 private sealed interface ImportStep {
     data object Input : ImportStep
-    data class Generating(val request: GenerationRequest) : ImportStep
+    /** [label] is what the progress screen shows (the PDF's name, not its storage path). */
+    data class Generating(val request: GenerationRequest, val label: String?) : ImportStep
     data class Review(val deck: DeckDto) : ImportStep
 }
 
@@ -105,7 +114,7 @@ fun SourceInputScreen(
     sharedValue: String?,
     onBack: () -> Unit,
     onOpenDeck: (String) -> Unit,
-    onOpenPaywall: () -> Unit,
+    onOpenPaywall: (PaywallSource) -> Unit,
 ) {
     val env = LocalAppEnvironment.current
     val context = LocalContext.current
@@ -117,7 +126,16 @@ fun SourceInputScreen(
     var step by remember { mutableStateOf<ImportStep>(ImportStep.Input) }
 
     // Input state
-    var url by remember { mutableStateOf(if (sourceType != PFSourceType.Pdf) sharedValue.orEmpty() else "") }
+    var url by remember {
+        mutableStateOf(
+            if (sourceType.hasOpenableLink) sharedValue?.let { UrlExtractor.firstUrl(it) ?: it }.orEmpty() else ""
+        )
+    }
+    var notesText by remember {
+        mutableStateOf(if (sourceType == PFSourceType.Text) sharedValue.orEmpty() else "")
+    }
+    var scannedText by remember { mutableStateOf("") }
+    var transcriptText by remember { mutableStateOf("") }
     var pickedPdf by remember { mutableStateOf<PickedPdf?>(null) }
     var pdfError by remember { mutableStateOf<String?>(null) }
     var isUploading by remember { mutableStateOf(false) }
@@ -144,11 +162,22 @@ fun SourceInputScreen(
             )
         }
         val (name, size) = context.queryFile(uri)
-        if (size > MAX_PDF_BYTES) {
-            pdfError = context.getString(R.string.pdf_too_large)
+        if (size > SourceLimits.HARD_PDF_BYTES) {
+            PFAnalytics.log(AnalyticsEvent.limitReached("pdf_size_hard", sourceType.raw))
+            pdfError = context.getString(
+                R.string.pdf_too_large_with_size,
+                PickedPdf(uri, name, size).sizeLabel,
+                SourceLimits.PRO_PDF_MB,
+            )
+            pickedPdf = null
         } else {
+            // Between the free and Pro limits a free user gets the upgrade
+            // card (pdfTooLargeForFree), not an error.
             pdfError = null
             pickedPdf = PickedPdf(uri, name, size)
+            if (!entitlement.isActive && size > SourceLimits.FREE_PDF_BYTES) {
+                PFAnalytics.log(AnalyticsEvent.limitReached("pdf_size_free", sourceType.raw))
+            }
         }
     }
 
@@ -157,8 +186,18 @@ fun SourceInputScreen(
         if (sourceType == PFSourceType.Pdf && sharedValue != null) {
             val uri = Uri.parse(sharedValue)
             val (name, size) = context.queryFile(uri)
-            if (size in 1..MAX_PDF_BYTES) pickedPdf = PickedPdf(uri, name, size)
+            if (size in 1..SourceLimits.HARD_PDF_BYTES) pickedPdf = PickedPdf(uri, name, size)
         }
+    }
+
+    DisposableEffect(step::class) {
+        val screen = when (step) {
+            is ImportStep.Generating -> "import_generating" to "GeneratingDeckContent"
+            is ImportStep.Review -> "import_review" to "ReviewGeneratedDeckContent"
+            else -> null
+        }
+        screen?.let { (name, screenClass) -> PFAnalytics.screen(name, screenClass) }
+        onDispose { screen?.let { PFAnalytics.screenLeft(it.first) } }
     }
 
     AnimatedContent(
@@ -179,20 +218,37 @@ fun SourceInputScreen(
                         stringResource(R.string.that_doesnt_look_like_a_valid_url)
                     else -> null
                 }
+                val pdfTooLargeForFree = pickedPdf?.let {
+                    !entitlement.isActive && it.sizeBytes > SourceLimits.FREE_PDF_BYTES
+                } == true
+                fun String.longEnough() = trim().length >= SourceLimits.MIN_SOURCE_CHARACTERS
                 val isReady = when (sourceType) {
-                    PFSourceType.Pdf -> pickedPdf != null
+                    PFSourceType.Pdf -> pickedPdf != null && !pdfTooLargeForFree
                     PFSourceType.Youtube -> youtubeValid
                     PFSourceType.Article -> urlValid
+                    PFSourceType.Text -> notesText.longEnough()
+                    PFSourceType.Photo -> scannedText.longEnough()
+                    PFSourceType.Audio -> transcriptText.longEnough()
                 }
 
                 SourceInputContent(
                     sourceType = sourceType,
                     onBack = onBack,
                     url = url,
-                    onUrlChange = { url = it },
+                    onUrlChange = { raw ->
+                        // "Source Link Article 1 https://en.wikipedia.org/..." -> the URL.
+                        url = UrlExtractor.firstUrl(raw)?.takeIf { it != raw.trim() } ?: raw
+                    },
                     urlError = urlError,
                     pickedPdf = pickedPdf,
                     pdfError = pdfError,
+                    pdfTooLargeForFree = pdfTooLargeForFree,
+                    notesText = notesText,
+                    onNotesChange = { notesText = it },
+                    scannedText = scannedText,
+                    onScannedTextChange = { scannedText = it },
+                    transcriptText = transcriptText,
+                    onTranscriptChange = { transcriptText = it },
                     onPickPdf = { pdfPicker.launch(arrayOf("application/pdf")) },
                     isReady = isReady,
                     cardCount = cardCount,
@@ -200,7 +256,7 @@ fun SourceInputScreen(
                     maxCards = maxCards,
                     autoCardCount = autoCardCount,
                     onToggleAuto = {
-                        if (entitlement.isActive) autoCardCount = !autoCardCount else onOpenPaywall()
+                        if (entitlement.isActive) autoCardCount = !autoCardCount else onOpenPaywall(PaywallSource.AutoCardCount)
                     },
                     isPro = entitlement.isActive,
                     onOpenPaywall = onOpenPaywall,
@@ -211,9 +267,13 @@ fun SourceInputScreen(
                     isUploading = isUploading,
                     onGenerate = {
                         scope.launch {
+                            fun String.capped() = trim().take(SourceLimits.MAX_SOURCE_CHARACTERS)
                             var sourceRef = when (sourceType) {
                                 PFSourceType.Pdf -> pickedPdf?.fileName.orEmpty()
-                                else -> url.trim()
+                                PFSourceType.Youtube, PFSourceType.Article -> url.trim()
+                                PFSourceType.Text -> notesText.capped()
+                                PFSourceType.Photo -> scannedText.capped()
+                                PFSourceType.Audio -> transcriptText.capped()
                             }
                             if (sourceType == PFSourceType.Pdf) {
                                 val pick = pickedPdf ?: return@launch
@@ -225,6 +285,7 @@ fun SourceInputScreen(
                                 }
                                 if (bytes == null) {
                                     pdfError = context.getString(R.string.couldnt_read_the_pdf)
+                                    PFAnalytics.log(AnalyticsEvent.importFailed(sourceType.raw, "pdf_read", "unreadable"))
                                     isUploading = false
                                     return@launch
                                 }
@@ -233,20 +294,23 @@ fun SourceInputScreen(
                                     env.remote.uploadPdf(bytes, pick.fileName, userId)
                                 } catch (failure: Exception) {
                                     pdfError = failure.message
+                                    PFAnalytics.log(AnalyticsEvent.importFailed(sourceType.raw, "pdf_upload", failure.message ?: "none"))
+                                    PFAnalytics.error(failure, "pdf_upload")
                                     isUploading = false
                                     return@launch
                                 }
                                 isUploading = false
                             }
                             step = ImportStep.Generating(
-                                GenerationRequest.of(
+                                request = GenerationRequest.of(
                                     sourceType = sourceType,
                                     sourceRef = sourceRef,
                                     targetCardCount = if (autoCardCount) maxCards else cardCount.roundToInt(),
                                     autoCardCount = autoCardCount,
                                     language = selectedLanguage,
                                     useSourceLanguage = useSourceLanguage,
-                                )
+                                ),
+                                label = pickedPdf?.fileName?.takeIf { sourceType == PFSourceType.Pdf },
                             )
                         }
                     },
@@ -257,19 +321,18 @@ fun SourceInputScreen(
                 request = current.request,
                 onGenerated = { step = ImportStep.Review(it) },
                 onCancel = { step = ImportStep.Input },
+                sourceLabelOverride = current.label,
             )
 
             is ImportStep.Review -> ReviewGeneratedDeckContent(
                 dto = current.deck,
                 onSaved = { onOpenDeck(it) },
                 onDiscarded = onBack,
-                onOpenPaywall = onOpenPaywall,
+                onOpenPaywall = { onOpenPaywall(PaywallSource.ReviewProjectChip) },
             )
         }
     }
 }
-
-private const val MAX_PDF_BYTES = 32L * 1024 * 1024
 
 private fun android.content.Context.queryFile(uri: Uri): Pair<String, Long> {
     var name = uri.lastPathSegment?.substringAfterLast('/') ?: "document.pdf"
@@ -310,6 +373,13 @@ private fun SourceInputContent(
     urlError: String?,
     pickedPdf: PickedPdf?,
     pdfError: String?,
+    pdfTooLargeForFree: Boolean,
+    notesText: String,
+    onNotesChange: (String) -> Unit,
+    scannedText: String,
+    onScannedTextChange: (String) -> Unit,
+    transcriptText: String,
+    onTranscriptChange: (String) -> Unit,
     onPickPdf: () -> Unit,
     isReady: Boolean,
     cardCount: Float,
@@ -318,7 +388,7 @@ private fun SourceInputContent(
     autoCardCount: Boolean,
     onToggleAuto: () -> Unit,
     isPro: Boolean,
-    onOpenPaywall: () -> Unit,
+    onOpenPaywall: (PaywallSource) -> Unit,
     useSourceLanguage: Boolean,
     selectedLanguage: PFGenerationLanguage,
     onSelectSourceLanguage: () -> Unit,
@@ -327,28 +397,26 @@ private fun SourceInputContent(
     onGenerate: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
-    val tint = when (sourceType) {
-        PFSourceType.Pdf -> PFTheme.colors.accent
-        PFSourceType.Youtube -> PFTheme.colors.danger
-        PFSourceType.Article -> PFTheme.colors.warning
-    }
-    val icon: ImageVector = when (sourceType) {
-        PFSourceType.Pdf -> PFIcons.Pdf
-        PFSourceType.Youtube -> PFIcons.Video
-        PFSourceType.Article -> PFIcons.Article
-    }
+    val tint = sourceType.tint()
+    val icon: ImageVector = sourceType.icon
     val title = stringResource(
         when (sourceType) {
             PFSourceType.Pdf -> R.string.from_a_pdf
             PFSourceType.Youtube -> R.string.from_youtube
             PFSourceType.Article -> R.string.from_an_article
+            PFSourceType.Text -> R.string.source_title_notes
+            PFSourceType.Photo -> R.string.source_title_photo
+            PFSourceType.Audio -> R.string.source_title_lecture
         }
     )
     val subtitle = stringResource(
         when (sourceType) {
             PFSourceType.Pdf -> R.string.pick_a_file_from_your_device_or_icloud
             PFSourceType.Youtube -> R.string.any_video_with_captions_works
-            PFSourceType.Article -> R.string.we_strip_the_chrome_and_read_just_the_content
+            PFSourceType.Article -> R.string.source_subtitle_article
+            PFSourceType.Text -> R.string.source_subtitle_notes
+            PFSourceType.Photo -> R.string.source_subtitle_photo
+            PFSourceType.Audio -> R.string.source_subtitle_lecture
         }
     )
 
@@ -388,14 +456,26 @@ private fun SourceInputContent(
                 }
             }
 
-            if (sourceType == PFSourceType.Pdf) {
-                PdfInput(
+            when (sourceType) {
+                PFSourceType.Pdf -> PdfInput(
                     tint = tint,
                     picked = pickedPdf,
                     error = pdfError,
+                    isPro = isPro,
+                    tooLargeForFree = pdfTooLargeForFree,
+                    onOpenPaywall = { onOpenPaywall(PaywallSource.PdfTooLarge) },
                     onPick = onPickPdf,
                 )
-            } else {
+                PFSourceType.Text -> NotesTextInput(text = notesText, onTextChange = onNotesChange)
+                PFSourceType.Photo -> PhotoScanInput(
+                    recognisedText = scannedText,
+                    onRecognisedTextChange = onScannedTextChange,
+                )
+                PFSourceType.Audio -> AudioSourceInput(
+                    transcript = transcriptText,
+                    onTranscriptChange = onTranscriptChange,
+                )
+                PFSourceType.Youtube, PFSourceType.Article -> {
                 Column(verticalArrangement = Arrangement.spacedBy(PFTheme.spacing.md)) {
                     PFTextField(
                         label = stringResource(R.string.link),
@@ -410,7 +490,7 @@ private fun SourceInputContent(
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(PFTheme.spacing.sm)) {
                         MiniChip(
-                            icon = PFIcons.Copy,
+                            icon = PFIcons.Paste,
                             label = stringResource(R.string.paste),
                             onClick = {
                                 clipboard.getText()?.text?.let(onUrlChange)
@@ -426,6 +506,7 @@ private fun SourceInputContent(
                         }
                     }
                 }
+                }
             }
 
             if (isReady) {
@@ -436,7 +517,7 @@ private fun SourceInputContent(
                     autoCardCount = autoCardCount,
                     onToggleAuto = onToggleAuto,
                     isPro = isPro,
-                    onOpenPaywall = onOpenPaywall,
+                    onOpenPaywall = { onOpenPaywall(PaywallSource.CardCountUpsell) },
                 )
 
                 LanguageCard(
@@ -468,6 +549,9 @@ private fun PdfInput(
     tint: Color,
     picked: PickedPdf?,
     error: String?,
+    isPro: Boolean,
+    tooLargeForFree: Boolean,
+    onOpenPaywall: () -> Unit,
     onPick: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(PFTheme.spacing.md)) {
@@ -496,7 +580,8 @@ private fun PdfInput(
                     color = PFTheme.colors.onSurface,
                 )
                 Text(
-                    text = stringResource(R.string.up_to_50_pages_on_the_free_plan),
+                    text = if (isPro) stringResource(R.string.pdf_limit_pro, SourceLimits.PRO_PDF_MB)
+                    else stringResource(R.string.pdf_limit_free, SourceLimits.FREE_PDF_MB),
                     style = PFTheme.type.footnote,
                     color = PFTheme.colors.onSurfaceMuted,
                 )
@@ -543,11 +628,31 @@ private fun PdfInput(
             }
         }
         PFErrorBanner(error)
+        if (tooLargeForFree) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(PFTheme.colors.accentSoft, RoundedCornerShape(PFRadius.md))
+                    .pfPressable(onClick = onOpenPaywall, pressedScale = 0.985f)
+                    .padding(PFTheme.spacing.md),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(PFIcons.Sparkle, contentDescription = null, tint = PFTheme.colors.accent, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(PFTheme.spacing.sm))
+                Text(
+                    text = stringResource(R.string.pdf_upsell_pro_limit, SourceLimits.PRO_PDF_MB),
+                    style = PFTheme.type.footnoteBold,
+                    color = PFTheme.colors.accent,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(PFIcons.Chevron, contentDescription = null, tint = PFTheme.colors.accent, modifier = Modifier.size(16.dp))
+            }
+        }
     }
 }
 
 @Composable
-private fun MiniChip(
+internal fun MiniChip(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
@@ -697,6 +802,9 @@ private fun LanguageCard(
                     PFSourceType.Pdf -> R.string.pdf_default
                     PFSourceType.Youtube -> R.string.video_default
                     PFSourceType.Article -> R.string.article_default
+                    PFSourceType.Text -> R.string.notes_default
+                    PFSourceType.Photo -> R.string.photo_default
+                    PFSourceType.Audio -> R.string.lecture_default
                 }
             ),
             subtitle = stringResource(R.string.match_the_source_s_language),

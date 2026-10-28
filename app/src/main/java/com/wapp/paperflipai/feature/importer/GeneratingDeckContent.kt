@@ -1,5 +1,6 @@
 package com.wapp.paperflipai.feature.importer
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.wapp.paperflipai.R
 import com.wapp.paperflipai.app.LocalAppEnvironment
 import com.wapp.paperflipai.core.data.DeckDto
+import com.wapp.paperflipai.core.data.GenerationJobStatus
 import com.wapp.paperflipai.core.data.GenerationRequest
 import com.wapp.paperflipai.core.data.PFSourceType
 import com.wapp.paperflipai.designsystem.PFIcons
@@ -50,79 +52,159 @@ import com.wapp.paperflipai.designsystem.modifier.PFHaptic
 import com.wapp.paperflipai.designsystem.modifier.rememberPFHaptics
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.feature.library.tint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * The wait while the AI builds the deck — the Android counterpart of
- * `GeneratingDeckView.swift`. Designed to feel intentional: the brand
- * animation, a step list that checks itself off on a timer, and shimmering
- * skeleton cards underneath.
+ * `GeneratingDeckView.swift`.
+ *
+ * Starts an async job on `generate-deck-job` and follows the real job
+ * status: "Reading your PDF" while the server fetches the source, "Writing
+ * N cards" while the model works, then done. A failure shows the server's
+ * own friendly message with Try again. Leaving the screen stops watching;
+ * the server finishes the job and the deck is simply not saved.
  */
 @Composable
 fun GeneratingDeckContent(
     request: GenerationRequest,
     onGenerated: (DeckDto) -> Unit,
     onCancel: () -> Unit,
+    /** What to show under the title, e.g. the PDF's file name (sourceRef is its storage path). */
+    sourceLabelOverride: String? = null,
 ) {
     val env = LocalAppEnvironment.current
     val haptics = rememberPFHaptics()
+    var startedAt by remember { mutableStateOf(System.currentTimeMillis()) }
+    val cancel = {
+        PFAnalytics.log(AnalyticsEvent.generationCancelled(request.sourceType, PFAnalytics.secondsSince(startedAt)))
+        onCancel()
+    }
 
     var stepIndex by remember { mutableIntStateOf(0) }
     var isComplete by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempt by remember { mutableIntStateOf(0) }
+    var flavourIndex by remember { mutableIntStateOf(0) }
 
+    val sourceType = PFSourceType.from(request.sourceType)
     val steps = listOf(
-        stringResource(R.string.reading_your_source),
-        stringResource(R.string.identifying_key_concepts),
-        stringResource(R.string.crafting_questions),
-        stringResource(R.string.polishing_answers),
+        stringResource(
+            when (sourceType) {
+                PFSourceType.Pdf -> R.string.gen_step_reading_pdf
+                PFSourceType.Youtube -> R.string.gen_step_getting_transcript
+                PFSourceType.Article -> R.string.gen_step_fetching_article
+                PFSourceType.Text -> R.string.gen_step_reading_notes
+                PFSourceType.Photo -> R.string.gen_step_reading_scan
+                PFSourceType.Audio -> R.string.gen_step_reading_transcript
+            }
+        ),
+        if (request.autoCardCount) stringResource(R.string.gen_step_writing_your_cards)
+        else stringResource(R.string.gen_step_writing_n_cards, request.targetCardCount),
+        stringResource(R.string.gen_step_checking_cards),
     )
+    val flavourLines = listOf(
+        stringResource(R.string.gen_flavour_testable_points),
+        stringResource(R.string.gen_flavour_short_answers),
+        stringResource(R.string.gen_flavour_stands_alone),
+    )
+    val fallbackError = stringResource(R.string.gen_error_generic)
+    val emptyDeckError = stringResource(R.string.gen_error_empty_deck)
 
-    // Step animator — motion to look at while the network call runs.
+    // Rotating line under the title while the model writes.
     LaunchedEffect(attempt) {
-        stepIndex = 0
-        repeat(steps.size) {
-            delay(700)
-            stepIndex += 1
+        flavourIndex = 0
+        while (true) {
+            delay(6_000)
+            flavourIndex += 1
         }
     }
 
-    // The real work.
+    // The real work: start a job, then follow its status.
     LaunchedEffect(attempt) {
         error = null
         isComplete = false
+        stepIndex = 0
+        startedAt = System.currentTimeMillis()
+        PFAnalytics.log(AnalyticsEvent.generationStarted(request.sourceType, request.targetCardCount, request.autoCardCount))
         try {
-            val userId = env.auth.session.value?.userId.orEmpty()
-            val dto = env.remote.generateDeck(request, userId)
-            stepIndex = steps.size
-            isComplete = true
-            haptics.perform(PFHaptic.Success)
-            delay(450)
-            onGenerated(dto)
+            val jobId = env.remote.startGenerationJob(request)
+            var finished = false
+            env.remote.watchGenerationJob(jobId).collect { job ->
+                when (job.status) {
+                    GenerationJobStatus.Queued, GenerationJobStatus.Fetching -> stepIndex = 0
+                    GenerationJobStatus.Generating -> stepIndex = maxOf(stepIndex, 1)
+                    GenerationJobStatus.Done -> {
+                        finished = true
+                        val dto = job.deck
+                        if (dto == null) {
+                            error = emptyDeckError
+                            PFAnalytics.log(AnalyticsEvent.generationFailed(request.sourceType, "empty_result", emptyDeckError, PFAnalytics.secondsSince(startedAt)))
+                            haptics.perform(PFHaptic.Error)
+                        } else {
+                            stepIndex = steps.size
+                            isComplete = true
+                            PFAnalytics.log(AnalyticsEvent.generationCompleted(request.sourceType, dto.cards.size, PFAnalytics.secondsSince(startedAt)))
+                            haptics.perform(PFHaptic.Success)
+                            delay(550)
+                            onGenerated(dto)
+                        }
+                    }
+                    GenerationJobStatus.Failed -> {
+                        finished = true
+                        error = job.errorMessage ?: fallbackError
+                        PFAnalytics.log(
+                            AnalyticsEvent.generationFailed(
+                                request.sourceType,
+                                job.errorCode ?: "failed",
+                                job.errorMessage ?: "none",
+                                PFAnalytics.secondsSince(startedAt),
+                            )
+                        )
+                        haptics.perform(PFHaptic.Error)
+                    }
+                }
+            }
+            if (!finished) {
+                error = fallbackError
+                PFAnalytics.log(AnalyticsEvent.generationFailed(request.sourceType, "stream_ended", fallbackError, PFAnalytics.secondsSince(startedAt)))
+                haptics.perform(PFHaptic.Error)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (failure: Exception) {
-            error = failure.message
+            error = failure.message?.takeIf { it.isNotBlank() } ?: fallbackError
+            PFAnalytics.log(
+                AnalyticsEvent.generationFailed(
+                    request.sourceType,
+                    failure::class.java.simpleName,
+                    failure.message ?: "none",
+                    PFAnalytics.secondsSince(startedAt),
+                )
+            )
+            PFAnalytics.error(failure, "generation", mapOf("source_type" to request.sourceType))
             haptics.perform(PFHaptic.Error)
         }
     }
 
-    val sourceType = PFSourceType.from(request.sourceType)
-    val tint: Color = when (sourceType) {
-        PFSourceType.Pdf -> PFTheme.colors.accent
-        PFSourceType.Youtube -> PFTheme.colors.danger
-        PFSourceType.Article -> PFTheme.colors.warning
-    }
-    val sourceLabel = when (sourceType) {
-        PFSourceType.Pdf -> request.sourceRef
-        else -> request.sourceRef.substringAfter("://").substringBefore('/')
+    val tint: Color = sourceType.tint()
+    val sourceLabel = sourceLabelOverride ?: when (sourceType) {
+        PFSourceType.Pdf -> request.sourceRef.substringAfterLast('/')
+        PFSourceType.Youtube, PFSourceType.Article ->
+            request.sourceRef.substringAfter("://").substringBefore('/')
+        PFSourceType.Text -> stringResource(R.string.source_label_pasted_notes)
+        PFSourceType.Photo -> stringResource(R.string.source_label_photo_scan)
+        PFSourceType.Audio -> stringResource(R.string.source_label_lecture)
     }
 
     PFScreen(
         topBar = {
             PFTopBar(
                 title = stringResource(R.string.generating),
-                onBack = onCancel,
+                onBack = cancel,
                 navigationIcon = PFIcons.Close,
             )
         },
@@ -187,6 +269,16 @@ fun GeneratingDeckContent(
                         maxLines = 1,
                         textAlign = TextAlign.Center,
                     )
+                    if (!isComplete && error == null && stepIndex >= 1) {
+                        Crossfade(targetState = flavourIndex % flavourLines.size, label = "flavour") { i ->
+                            Text(
+                                text = flavourLines[i],
+                                style = PFTheme.type.caption,
+                                color = PFTheme.colors.onSurfaceFaint,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
                 }
             }
 
@@ -210,7 +302,7 @@ fun GeneratingDeckContent(
                         )
                     }
                     Text(
-                        text = stringResource(R.string.that_didn_t_work),
+                        text = stringResource(R.string.gen_error_title),
                         style = PFTheme.type.title3,
                         color = PFTheme.colors.onSurface,
                     )
@@ -228,7 +320,7 @@ fun GeneratingDeckContent(
                     )
                     PFButton(
                         title = stringResource(R.string.cancel),
-                        onClick = onCancel,
+                        onClick = cancel,
                         variant = PFButtonVariant.Ghost,
                     )
                 }

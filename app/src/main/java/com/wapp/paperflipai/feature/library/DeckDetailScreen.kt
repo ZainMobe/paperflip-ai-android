@@ -37,10 +37,12 @@ import com.wapp.paperflipai.app.AppEnvironment
 import com.wapp.paperflipai.app.LocalAppEnvironment
 import com.wapp.paperflipai.core.data.PFDeck
 import com.wapp.paperflipai.core.data.PFFlashcard
+import com.wapp.paperflipai.core.srs.StudyPlan
 import com.wapp.paperflipai.core.srs.StudyQueue
 import com.wapp.paperflipai.designsystem.PFIcons
 import com.wapp.paperflipai.designsystem.component.PFButton
 import com.wapp.paperflipai.designsystem.component.PFButtonSize
+import com.wapp.paperflipai.designsystem.component.PFButtonVariant
 import com.wapp.paperflipai.designsystem.component.PFConfirmation
 import com.wapp.paperflipai.designsystem.component.PFConfirmationHost
 import com.wapp.paperflipai.designsystem.component.PFEmptyState
@@ -59,9 +61,13 @@ import com.wapp.paperflipai.designsystem.theme.PFElevation
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.pfElevation
+import com.wapp.paperflipai.feature.quiz.PracticeTestSetupSheet
+import com.wapp.paperflipai.feature.quiz.QuizConfiguration
 import com.wapp.paperflipai.util.asRelativeLabel
 import com.wapp.paperflipai.util.daysFromNow
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.PaywallSource
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * The screen behind every deck card — the Android counterpart of
@@ -74,8 +80,10 @@ fun DeckDetailScreen(
     deckId: String,
     onBack: () -> Unit,
     onStudy: (String) -> Unit,
-    onOpenPaywall: () -> Unit,
+    onOpenPaywall: (PaywallSource) -> Unit,
     onOpenProject: (String) -> Unit,
+    onStartQuiz: (deckId: String, configuration: QuizConfiguration) -> Unit = { _, _ -> },
+    onStartMatch: (deckId: String) -> Unit = {},
 ) {
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
@@ -98,6 +106,8 @@ fun DeckDetailScreen(
     var showCaughtUp by remember { mutableStateOf(false) }
     var isToggling by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<PFConfirmation?>(null) }
+    var showTestSetup by remember { mutableStateOf(false) }
+    var showExamDate by remember { mutableStateOf(false) }
 
     if (deck == null) {
         PFScreen(topBar = { PFTopBar(title = "", onBack = onBack) }) { padding ->
@@ -111,7 +121,11 @@ fun DeckDetailScreen(
         return
     }
 
-    val dueCount = remember(cards) { StudyQueue.dueCount(cards) }
+    val dueCount = remember(cards, deck.examDate) { StudyQueue.plannedCount(cards, deck.examDate) }
+    val plan = remember(cards, deck.examDate) { StudyPlan.make(deck.examDate, cards) }
+    val quizResults = remember(snapshot.quizResults, deckId) {
+        snapshot.quizResults.filter { it.deckId == deckId }.sortedByDescending { it.endedAt }
+    }
     val deleteTitle = stringResource(R.string.delete_3, deck.title)
     val deleteMessage = stringResource(R.string.this_deck_and_all_cards_will_be_removed_from_t, cards.size)
     val confirmLabel = stringResource(R.string.delete_deck)
@@ -157,10 +171,19 @@ fun DeckDetailScreen(
                     folderName = folder?.name,
                     folderTint = folder.tint(),
                     cardCount = cards.size,
+                    plan = plan,
+                    onEditPlan = { showExamDate = true },
                     onStudy = {
                         if (dueCount == 0) showCaughtUp = true else onStudy(deck.id)
                     },
+                    onQuiz = { onStartQuiz(deck.id, QuizConfiguration.Quiz) },
+                    onTest = { showTestSetup = true },
+                    onMatch = { onStartMatch(deck.id) },
                 )
+            }
+
+            if (quizResults.isNotEmpty()) {
+                item { QuizHistory(results = quizResults) }
             }
 
             item {
@@ -225,7 +248,7 @@ fun DeckDetailScreen(
                     showChevron = false,
                     onClick = {
                         showMenu = false
-                        if (entitlement.isActive) showShare = true else onOpenPaywall()
+                        if (entitlement.isActive) showShare = true else onOpenPaywall(PaywallSource.DeckShare)
                     },
                 )
                 PFRowDivider()
@@ -252,7 +275,7 @@ fun DeckDetailScreen(
                     showChevron = false,
                     onClick = {
                         showMenu = false
-                        if (entitlement.isActive) showMoveProject = true else onOpenPaywall()
+                        if (entitlement.isActive) showMoveProject = true else onOpenPaywall(PaywallSource.DeckMoveToProject)
                     },
                 )
                 deck.projectId?.let { projectId ->
@@ -303,6 +326,7 @@ fun DeckDetailScreen(
 
     if (showMoveFolder) {
         PFSheet(onDismiss = { showMoveFolder = false }, title = stringResource(R.string.move_to_folder)) {
+            TrackScreen("deck_move_to_folder", "MoveToFolderSheet")
             PFGroupedCard(modifier = Modifier.padding(horizontal = PFTheme.spacing.lg)) {
                 PFListRow(
                     title = stringResource(R.string.none),
@@ -331,6 +355,7 @@ fun DeckDetailScreen(
 
     if (showMoveProject) {
         PFSheet(onDismiss = { showMoveProject = false }, title = stringResource(R.string.move_to_project)) {
+            TrackScreen("deck_move_to_project", "MoveToProjectSheet")
             PFGroupedCard(modifier = Modifier.padding(horizontal = PFTheme.spacing.lg)) {
                 PFListRow(
                     title = stringResource(R.string.none_personal_deck),
@@ -385,6 +410,25 @@ fun DeckDetailScreen(
         )
     }
 
+    if (showTestSetup) {
+        PracticeTestSetupSheet(
+            cardCount = cards.size,
+            onDismiss = { showTestSetup = false },
+            onStart = { config ->
+                showTestSetup = false
+                onStartQuiz(deck.id, config)
+            },
+        )
+    }
+
+    if (showExamDate) {
+        ExamDateSheet(
+            deck = deck,
+            cards = cards,
+            onDismiss = { showExamDate = false },
+        )
+    }
+
     PFConfirmationHost(confirmation) { confirmation = null }
 }
 
@@ -411,7 +455,12 @@ private fun DeckHero(
     folderName: String?,
     folderTint: Color,
     cardCount: Int,
+    plan: StudyPlan?,
+    onEditPlan: () -> Unit,
     onStudy: () -> Unit,
+    onQuiz: () -> Unit,
+    onTest: () -> Unit,
+    onMatch: () -> Unit,
 ) {
     val shape = RoundedCornerShape(PFRadius.xxl)
     Column(
@@ -483,6 +532,8 @@ private fun DeckHero(
             )
         }
 
+        StudyPlanRow(plan = plan, onClick = onEditPlan)
+
         PFButton(
             title = stringResource(R.string.study_now),
             onClick = onStudy,
@@ -490,6 +541,32 @@ private fun DeckHero(
             trailingIcon = PFIcons.Forward,
             modifier = Modifier.padding(top = PFTheme.spacing.xs),
         )
+
+        if (cardCount >= 2) {
+            Row(horizontalArrangement = Arrangement.spacedBy(PFTheme.spacing.sm)) {
+                PFButton(
+                    title = stringResource(R.string.quiz_title),
+                    onClick = onQuiz,
+                    variant = PFButtonVariant.Tonal,
+                    leadingIcon = PFIcons.Quiz,
+                    modifier = Modifier.weight(1f),
+                )
+                PFButton(
+                    title = stringResource(R.string.deck_test_button),
+                    onClick = onTest,
+                    variant = PFButtonVariant.Tonal,
+                    leadingIcon = PFIcons.Timer,
+                    modifier = Modifier.weight(1f),
+                )
+                PFButton(
+                    title = stringResource(R.string.match_title),
+                    onClick = onMatch,
+                    variant = PFButtonVariant.Tonal,
+                    leadingIcon = PFIcons.Grid,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
 }
 

@@ -63,6 +63,7 @@ import com.wapp.paperflipai.feature.projects.JoinProjectSheet
 import com.wapp.paperflipai.feature.projects.NewProjectSheet
 import com.wapp.paperflipai.feature.projects.ProjectMiniCard
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.PaywallSource
 
 /**
  * The Library — the Android counterpart of `LibraryHome.swift`. Search,
@@ -77,7 +78,7 @@ fun LibraryHomeScreen(
     onOpenImport: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenInvites: () -> Unit,
-    onOpenPaywall: () -> Unit,
+    onOpenPaywall: (PaywallSource) -> Unit,
 ) {
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
@@ -233,7 +234,7 @@ fun LibraryHomeScreen(
                             onOpenProject = onOpenProject,
                             onNewProject = { showNewProject = true },
                             onJoinWithLink = { joinToken = "" },
-                            onOpenPaywall = onOpenPaywall,
+                            onOpenPaywall = { onOpenPaywall(PaywallSource.LibraryProjectsUpsell) },
                             onOpenInvites = onOpenInvites,
                         )
 
@@ -317,7 +318,7 @@ fun LibraryHomeScreen(
             onMoveToProject = { project ->
                 actionsDeck = null
                 if (!entitlement.isActive) {
-                    onOpenPaywall()
+                    onOpenPaywall(PaywallSource.LibraryAssignProject)
                 } else {
                     scope.launch {
                         val ok = env.repository.moveDeckToProject(deck, project?.id)

@@ -19,6 +19,9 @@ val PFSourceType.icon: ImageVector
         PFSourceType.Pdf -> PFIcons.Pdf
         PFSourceType.Youtube -> PFIcons.Video
         PFSourceType.Article -> PFIcons.Article
+        PFSourceType.Text -> PFIcons.Notes
+        PFSourceType.Photo -> PFIcons.DocumentScan
+        PFSourceType.Audio -> PFIcons.Waveform
     }
 
 val PFSourceType.label: String
@@ -26,6 +29,9 @@ val PFSourceType.label: String
         PFSourceType.Pdf -> "PDF"
         PFSourceType.Youtube -> "YOUTUBE"
         PFSourceType.Article -> "ARTICLE"
+        PFSourceType.Text -> "NOTES"
+        PFSourceType.Photo -> "PHOTO"
+        PFSourceType.Audio -> "AUDIO"
     }
 
 @Composable
@@ -33,6 +39,9 @@ fun PFSourceType.tint(): Color = when (this) {
     PFSourceType.Pdf -> PFTheme.colors.accent
     PFSourceType.Youtube -> PFTheme.colors.danger
     PFSourceType.Article -> PFTheme.colors.warning
+    PFSourceType.Text -> PFTheme.colors.success
+    PFSourceType.Photo -> PFTheme.colors.info
+    PFSourceType.Audio -> PFTheme.colors.hard
 }
 
 val PFDeck.icon: ImageVector get() = sourceType.icon

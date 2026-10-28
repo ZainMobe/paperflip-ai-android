@@ -1,6 +1,9 @@
 package com.wapp.paperflipai.core.network
 
 import com.wapp.paperflipai.core.data.CardDto
+import com.wapp.paperflipai.core.data.CardExplanationDto
+import com.wapp.paperflipai.core.data.GenerationJobDto
+import com.wapp.paperflipai.core.data.GenerationJobStatus
 import com.wapp.paperflipai.core.data.DeckDto
 import com.wapp.paperflipai.core.data.FolderDto
 import com.wapp.paperflipai.core.data.GenerationRequest
@@ -18,6 +21,8 @@ import com.wapp.paperflipai.core.data.ProjectMemberDto
 import com.wapp.paperflipai.core.data.newId
 import com.wapp.paperflipai.designsystem.theme.PFGenerationLanguage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -387,6 +392,63 @@ class MockRemoteStore(private val seed: Boolean = true) : RemoteStore {
 
     // ── Helpers ───────────────────────────────────────────────────────
 
+    // ── Async generation (mock: runs generateDeck behind a fake job) ──
+
+    private val mockJobs = LinkedHashMap<String, GenerationRequest>()
+
+    override suspend fun startGenerationJob(request: GenerationRequest): String {
+        simulate()
+        val id = newId()
+        mutex.withLock { mockJobs[id] = request }
+        return id
+    }
+
+    override fun watchGenerationJob(jobId: String): Flow<GenerationJobDto> = flow {
+        emit(GenerationJobDto(id = jobId, status = GenerationJobStatus.Fetching))
+        delay(900)
+        emit(GenerationJobDto(id = jobId, status = GenerationJobStatus.Generating))
+        val request = mutex.withLock { mockJobs[jobId] }
+        if (request == null) {
+            emit(
+                GenerationJobDto(
+                    id = jobId,
+                    status = GenerationJobStatus.Failed,
+                    errorCode = "not_found",
+                    errorMessage = "We couldn't find that job.",
+                )
+            )
+            return@flow
+        }
+        val result = runCatching { generateDeck(request, "mock-user") }
+        emit(
+            result.fold(
+                onSuccess = { GenerationJobDto(id = jobId, status = GenerationJobStatus.Done, deck = it) },
+                onFailure = {
+                    GenerationJobDto(
+                        id = jobId,
+                        status = GenerationJobStatus.Failed,
+                        errorCode = "model_failed",
+                        errorMessage = it.message ?: "Something went wrong while writing your cards. Try again.",
+                    )
+                },
+            )
+        )
+    }
+
+    override suspend fun explainCard(
+        front: String,
+        back: String,
+        deckTitle: String?,
+        language: String?,
+    ): CardExplanationDto {
+        delay(1200)
+        return CardExplanationDto(
+            explanation = "In plain terms: $back This is the idea the question is really testing.",
+            example = "For example, think of how this shows up when you study the topic.",
+            mnemonic = "Remember the first letter of the key word: ${front.take(1).uppercase()}.",
+        )
+    }
+
     private suspend fun simulate() {
         delay(latencyMillis)
         if (shouldFailNextCall) {
@@ -396,6 +458,9 @@ class MockRemoteStore(private val seed: Boolean = true) : RemoteStore {
     }
 
     private fun guessTitle(sourceType: PFSourceType) = when (sourceType) {
+        PFSourceType.Text -> "New deck from notes"
+        PFSourceType.Photo -> "New deck from photo"
+        PFSourceType.Audio -> "New deck from lecture"
         PFSourceType.Pdf -> "New deck from PDF"
         PFSourceType.Youtube -> "New deck from YouTube"
         PFSourceType.Article -> "New deck from article"

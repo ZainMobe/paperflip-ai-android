@@ -67,6 +67,8 @@ import com.wapp.paperflipai.feature.library.DeckCard
 import com.wapp.paperflipai.feature.library.DeckCardLayout
 import com.wapp.paperflipai.util.asShortDate
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Hero, members, invites, join requests and decks — the Android
@@ -645,6 +647,7 @@ fun ProjectDetailScreen(
                                 destructive = true,
                             ) {
                                 runCatching { env.remote.deleteProject(projectId) }
+                                PFAnalytics.log(AnalyticsEvent.projectDeleted)
                                 env.database.deleteProject(projectId)
                                 PFToast.warning(deletedToast, project.name)
                                 onBack()
@@ -672,6 +675,7 @@ fun ProjectDetailScreen(
                                     runCatching { env.remote.removeProjectMember(projectId, it) }
                                 }
                                 env.database.deleteProject(projectId)
+                                PFAnalytics.log(AnalyticsEvent.projectLeft)
                                 PFToast.info(leftToast, project.name)
                                 onBack()
                             }

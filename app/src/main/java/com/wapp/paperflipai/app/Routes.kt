@@ -2,6 +2,7 @@ package com.wapp.paperflipai.app
 
 import java.net.URLDecoder
 import java.net.URLEncoder
+import com.wapp.paperflipai.core.analytics.PaywallSource
 
 /** Every destination in the authenticated part of the app. */
 object Route {
@@ -32,6 +33,16 @@ object Route {
     fun importSource(sourceType: String, shared: String? = null) =
         "importSource/$sourceType?shared=${shared.orEmpty().encode()}"
 
+    const val IMPORT_PASTE = "importPaste"
+    const val IMPORT_REVIEW = "importReview"
+
+    // Quizzes
+    const val QUIZ = "quiz/{deckId}?mode={mode}&count={count}&time={time}"
+    fun quiz(deckId: String, mode: String, count: Int?, timeSeconds: Int?) =
+        "quiz/$deckId?mode=$mode&count=${count ?: 0}&time=${timeSeconds ?: 0}"
+    const val MATCH = "match/{deckId}"
+    fun match(deckId: String) = "match/$deckId"
+
     // Settings
     const val SETTINGS_PROFILE = "settings/profile"
     const val SETTINGS_APPEARANCE = "settings/appearance"
@@ -41,7 +52,8 @@ object Route {
     const val SETTINGS_DELETE = "settings/delete"
 
     // Standalone
-    const val PAYWALL = "paywall"
+    const val PAYWALL = "paywall?source={source}"
+    fun paywall(source: PaywallSource) = "paywall?source=${source.raw}"
     const val PRO_UNLOCKED = "proUnlocked"
     const val NOTIFICATIONS_INBOX = "notificationsInbox"
     const val SUPPORT = "support"

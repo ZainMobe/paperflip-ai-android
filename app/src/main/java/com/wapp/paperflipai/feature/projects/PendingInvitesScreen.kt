@@ -51,6 +51,8 @@ import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.core.data.PFProjectRole
 import com.wapp.paperflipai.util.asShortDate
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Inbox of project invites the current user has received — the Android
@@ -201,6 +203,7 @@ fun PendingInvitesScreen(
                                             runCatching { env.remote.declineProjectInvite(invite.id) }
                                         processingId = null
                                         if (result.isSuccess) {
+                                            PFAnalytics.log(AnalyticsEvent.projectInviteResponded(accepted = false))
                                             invites.removeAll { it.id == invite.id }
                                         } else {
                                             PFToast.error(
@@ -221,6 +224,7 @@ fun PendingInvitesScreen(
                                         processingId = invite.id
                                         val result = runCatching {
                                             env.remote.acceptProjectInvite(invite.id)
+                                            PFAnalytics.log(AnalyticsEvent.projectInviteResponded(accepted = true))
                                             env.auth.session.value?.userId?.let {
                                                 env.sync.pullProjects(it)
                                             }

@@ -51,6 +51,8 @@ import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.openUrl
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * First screen of the auth flow — the Android counterpart of
@@ -140,11 +142,13 @@ fun WelcomeAuthScreen(onChooseEmail: () -> Unit) {
                             ?: throw AuthError.Unknown("Couldn't open Google sign-in.")
                         val result = env.google.signIn(host)
                         env.auth.signInWithGoogle(result)
+                        PFAnalytics.log(AnalyticsEvent.login("google"))
                         // The root router observes the session and swaps screens.
                     } catch (cancelled: AuthError.UserCancelled) {
-                        // User dismissed the sheet — say nothing.
+                        PFAnalytics.log(AnalyticsEvent.authCancelled("google"))
                     } catch (failure: Exception) {
                         error = failure.message
+                        PFAnalytics.log(AnalyticsEvent.authFailed("google", "sign_in", failure))
                     } finally {
                         isWorking = false
                     }

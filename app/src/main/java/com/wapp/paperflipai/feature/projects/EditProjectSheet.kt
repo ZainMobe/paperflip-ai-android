@@ -25,6 +25,7 @@ import com.wapp.paperflipai.designsystem.component.PFSheet
 import com.wapp.paperflipai.designsystem.component.PFTextField
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * Owner-only rename / re-describe — the Android counterpart of
@@ -35,6 +36,7 @@ fun EditProjectSheet(
     project: PFProject,
     onDismiss: () -> Unit,
 ) {
+    TrackScreen("project_edit", "EditProjectSheet")
     val env = LocalAppEnvironment.current
     val scope = rememberCoroutineScope()
 

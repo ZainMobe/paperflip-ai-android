@@ -43,6 +43,8 @@ import com.wapp.paperflipai.designsystem.component.PFTopBar
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.util.formatMinuteOfDay
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Settings → Notifications — the Android counterpart of
@@ -62,6 +64,7 @@ fun NotificationSettingsScreen(onBack: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) { granted ->
+        PFAnalytics.log(AnalyticsEvent.notificationPermission(granted))
         env.notifications.refreshAuthorization()
         if (granted) env.notifications.applyReminderState()
     }

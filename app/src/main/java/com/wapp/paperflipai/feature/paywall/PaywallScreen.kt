@@ -61,6 +61,11 @@ import com.wapp.paperflipai.designsystem.theme.pfElevation
 import com.wapp.paperflipai.util.openUrl
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import androidx.compose.runtime.DisposableEffect
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import com.wapp.paperflipai.core.analytics.PaywallDismissMethod
+import com.wapp.paperflipai.core.analytics.PaywallSource
 
 /**
  * The upgrade screen — the Android counterpart of `PaywallView.swift`.
@@ -75,11 +80,13 @@ private val paywallFeatures = listOf(
     PaywallFeature(PFIcons.Deck, R.string.up_to_50_cards_per_deck, R.string.get_the_full_picture_of_any_source),
     PaywallFeature(PFIcons.Study, R.string.spaced_repetition, R.string.sm_2_algorithm_schedules_each_card_for_the_rig),
     PaywallFeature(PFIcons.Grid, R.string.home_screen_widgets, R.string.widgets_blurb_android),
-    PaywallFeature(PFIcons.Share, R.string.export_to_anki_csv, R.string.your_data_stays_yours),
+    PaywallFeature(PFIcons.Pdf, R.string.paywall_feature_pdf_title, R.string.paywall_feature_pdf_body),
+    PaywallFeature(PFIcons.Sparkle, R.string.paywall_feature_auto_title, R.string.paywall_feature_auto_body),
 )
 
 @Composable
 fun PaywallScreen(
+    source: PaywallSource = PaywallSource.Unknown,
     onClose: () -> Unit,
     onPurchased: () -> Unit,
 ) {
@@ -87,7 +94,11 @@ fun PaywallScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val products by env.entitlements.availableProducts.collectAsStateWithLifecycle()
+    val rawProducts by env.entitlements.availableProducts.collectAsStateWithLifecycle()
+    // Yearly always leads: it carries the trial and the best price per month.
+    val products = remember(rawProducts) {
+        rawProducts.sortedBy { if (it.cadence == PaywallProduct.Cadence.Annual) 0 else 1 }
+    }
     val entitlement by env.entitlements.entitlement.collectAsStateWithLifecycle()
 
     var selectedProductId by remember { mutableStateOf<String?>(null) }
@@ -98,6 +109,34 @@ fun PaywallScreen(
     val nothingToRestoreLabel = stringResource(R.string.nothing_to_restore)
     val couldntRestoreLabel = stringResource(R.string.couldnt_restore)
     var error by remember { mutableStateOf<String?>(null) }
+
+    val openedAt = remember { System.currentTimeMillis() }
+    var purchaseAttempted by remember { mutableStateOf(false) }
+    var dismissMethod by remember { mutableStateOf<PaywallDismissMethod?>(null) }
+    val lastStoreError by env.entitlements.lastError.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        PFAnalytics.log(AnalyticsEvent.paywallViewed(source, entitlement))
+    }
+    LaunchedEffect(lastStoreError, products) {
+        val storeError = lastStoreError
+        if (products.isEmpty() && storeError != null) {
+            PFAnalytics.log(AnalyticsEvent.paywallProductsFailed(source, storeError))
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            PFAnalytics.log(
+                AnalyticsEvent.paywallDismissed(
+                    source = source,
+                    method = dismissMethod ?: PaywallDismissMethod.Back,
+                    seconds = PFAnalytics.secondsSince(openedAt),
+                    purchaseAttempted = purchaseAttempted,
+                    lastError = error,
+                )
+            )
+        }
+    }
 
     LaunchedEffect(products) {
         if (selectedProductId == null) {
@@ -224,7 +263,12 @@ fun PaywallScreen(
                             product = product,
                             savingsPercent = savings,
                             selected = selectedProductId == product.id,
-                            onClick = { selectedProductId = product.id },
+                            onClick = {
+                                if (selectedProductId != product.id) {
+                                    PFAnalytics.log(AnalyticsEvent.paywallPlanSelected(source, product.id))
+                                }
+                                selectedProductId = product.id
+                            },
                         )
                     }
                 }
@@ -234,19 +278,27 @@ fun PaywallScreen(
 
             if (products.isNotEmpty()) {
                 PFButton(
-                    title = selected?.let {
-                        stringResource(R.string.start_pro_2, it.priceLabel)
-                    } ?: stringResource(R.string.start_pro),
+                    title = when {
+                        selected == null -> stringResource(R.string.start_pro)
+                        selected.introLabel != null -> stringResource(R.string.paywall_start_trial)
+                        else -> stringResource(R.string.paywall_continue_price, selected.priceLabel)
+                    },
                     onClick = {
                         val product = selected
                         if (product != null) scope.launch {
                             isPurchasing = true
+                            purchaseAttempted = true
                             error = null
+                            PFAnalytics.log(AnalyticsEvent.purchaseStarted(source, product))
                             try {
                                 env.entitlements.purchase(product)
+                                PFAnalytics.log(AnalyticsEvent.purchaseCompleted(source, product))
+                                dismissMethod = PaywallDismissMethod.Purchased
                                 onPurchased()
                             } catch (failure: Exception) {
                                 error = failure.message
+                                PFAnalytics.log(AnalyticsEvent.purchaseFailed(source, product, failure))
+                                PFAnalytics.error(failure, "purchase", mapOf("product_id" to product.id))
                             } finally {
                                 isPurchasing = false
                             }
@@ -264,8 +316,18 @@ fun PaywallScreen(
                 onClick = {
                     scope.launch {
                         isRestoring = true
+                        PFAnalytics.log(AnalyticsEvent.restoreStarted("paywall"))
                         val result = runCatching { env.entitlements.restorePurchases() }
                         isRestoring = false
+                        result.fold(
+                            onSuccess = {
+                                PFAnalytics.log(
+                                    if (env.entitlements.entitlement.value.isActive) AnalyticsEvent.restoreCompleted("paywall")
+                                    else AnalyticsEvent.restoreNoneFound("paywall")
+                                )
+                            },
+                            onFailure = { PFAnalytics.log(AnalyticsEvent.restoreFailed("paywall", it)) },
+                        )
                         // Silence here is the worst outcome: a subscriber who
                         // reinstalled cannot tell "no purchase found" apart from
                         // "the network failed".
@@ -289,6 +351,14 @@ fun PaywallScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(PFTheme.spacing.xs),
             ) {
+                if (selected != null && selected.introLabel != null) {
+                    Text(
+                        text = stringResource(R.string.paywall_trial_legal, selected.priceLabel),
+                        style = PFTheme.type.caption,
+                        color = PFTheme.colors.onSurfaceFaint,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Text(
                     text = stringResource(R.string.billing_note_android),
                     style = PFTheme.type.caption,
@@ -321,7 +391,10 @@ fun PaywallScreen(
         PFIconButton(
             icon = PFIcons.Close,
             contentDescription = stringResource(R.string.nav_close),
-            onClick = onClose,
+            onClick = {
+                dismissMethod = PaywallDismissMethod.CloseButton
+                onClose()
+            },
             tint = PFTheme.colors.onSurfaceMuted,
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -362,6 +435,14 @@ private fun PlanCard(
                 style = PFTheme.type.bodyEmphasis,
                 color = PFTheme.colors.onSurface,
             )
+            if (product.cadence == PaywallProduct.Cadence.Annual) {
+                Spacer(Modifier.width(PFTheme.spacing.sm))
+                PFTagPill(
+                    title = stringResource(R.string.paywall_best_value),
+                    tint = PFTheme.colors.accent,
+                    prominent = true,
+                )
+            }
             savingsPercent?.let {
                 Spacer(Modifier.width(PFTheme.spacing.sm))
                 PFTagPill(
@@ -430,7 +511,11 @@ private fun PlanCard(
                     modifier = Modifier.size(14.dp),
                 )
                 Spacer(Modifier.width(PFTheme.spacing.xs))
-                Text(text = it, style = PFTheme.type.footnote, color = PFTheme.colors.accent)
+                Text(
+                    text = stringResource(R.string.paywall_trial_then, it, product.priceLabel),
+                    style = PFTheme.type.footnote,
+                    color = PFTheme.colors.accent,
+                )
             }
         }
     }

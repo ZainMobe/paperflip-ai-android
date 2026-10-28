@@ -36,6 +36,7 @@ import com.wapp.paperflipai.designsystem.modifier.PFHaptic
 import com.wapp.paperflipai.designsystem.modifier.pfPressable
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.parseHexColor
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * Create / rename / delete a folder — the Android counterpart of
@@ -62,6 +63,7 @@ fun FolderEditorSheet(
     onSave: (name: String, colorHex: String) -> Unit,
     onDelete: (() -> Unit)? = null,
 ) {
+    TrackScreen("folder_editor", "FolderEditorSheet")
     var name by remember { mutableStateOf(existing?.name.orEmpty()) }
     var colorHex by remember { mutableStateOf(existing?.colorHex ?: folderPalette[0].second) }
 

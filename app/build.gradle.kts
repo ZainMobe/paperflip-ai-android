@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 // Secrets live in local.properties (gitignored) or as -P Gradle properties on
@@ -79,6 +81,9 @@ kotlin {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.analytics)
     implementation(libs.material)
 
     // Compose
@@ -120,6 +125,15 @@ dependencies {
     // Home screen widget
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+
+    // On-device OCR for "Scan pages". The play-services ("unbundled")
+    // variants keep the models out of the APK; Play downloads them on
+    // install (see the DEPENDENCIES meta-data in the manifest).
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.mlkit.text.recognition.devanagari)
+
+    // In-app review prompt after a successful deck.
+    implementation(libs.play.review)
 
     debugImplementation(libs.androidx.ui.tooling)
 

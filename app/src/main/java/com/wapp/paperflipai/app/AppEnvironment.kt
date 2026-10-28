@@ -21,6 +21,8 @@ import com.wapp.paperflipai.core.notifications.NotificationsClient
 import com.wapp.paperflipai.core.settings.SettingsStore
 import com.wapp.paperflipai.core.srs.StreakTracker
 import com.wapp.paperflipai.core.srs.StudyQueue
+import com.wapp.paperflipai.core.review.ReviewPromptCoordinator
+import com.wapp.paperflipai.core.speech.SpeechReader
 import com.wapp.paperflipai.core.sync.SyncEngine
 import com.wapp.paperflipai.widget.WidgetSnapshotStore
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Single source of truth for app-wide services — the Android counterpart of
@@ -94,6 +97,12 @@ class AppEnvironment(context: Context) {
     val sync = SyncEngine(remote, database, networkMonitor)
     val repository = PaperflipRepository(database, remote)
 
+    /** Read-aloud for study cards. The engine starts on first use. */
+    val speech = SpeechReader(appContext, scope)
+
+    /** Play in-app review timing (see ReviewPromptCoordinator). */
+    val reviewPrompts = ReviewPromptCoordinator(appContext)
+
     /** True until services have completed their cold-start work. */
     private val _isBootstrapping = MutableStateFlow(true)
     val isBootstrapping: StateFlow<Boolean> = _isBootstrapping.asStateFlow()
@@ -103,6 +112,19 @@ class AppEnvironment(context: Context) {
         database.start()
         networkMonitor.start()
         notifications.applyReminderState()
+
+        scope.launch {
+            auth.session.collect { PFAnalytics.setUser(it?.userId) }
+        }
+        scope.launch {
+            entitlements.entitlement.collect { PFAnalytics.setPlan(it) }
+        }
+        scope.launch {
+            settings.appearance.collect { PFAnalytics.setUserProperty(it.rawValue, "appearance") }
+        }
+        scope.launch {
+            settings.language.collect { PFAnalytics.setUserProperty(it.rawValue, "app_language") }
+        }
 
         scope.launch {
             entitlements.configure()
@@ -123,10 +145,15 @@ class AppEnvironment(context: Context) {
             // runs on every resume, so it is where a streak that lapsed
             // overnight stops being advertised on the widget.
             streaks.refresh()
-            val cards = database.snapshot.value.cards
+            val snap = database.snapshot.value
+            val cardsByDeck = snap.cards.groupBy { it.deckId }
+            // Decks with an exam date contribute their paced count.
+            val dueToday = snap.decks.sumOf { deck ->
+                StudyQueue.plannedCount(cardsByDeck[deck.id].orEmpty(), deck.examDate)
+            }
             WidgetSnapshotStore.update(
                 context = appContext,
-                dueToday = StudyQueue.dueCount(cards),
+                dueToday = dueToday,
                 streakDays = streaks.count.value,
                 lastStudiedAt = streaks.lastStudyDate.value,
             )

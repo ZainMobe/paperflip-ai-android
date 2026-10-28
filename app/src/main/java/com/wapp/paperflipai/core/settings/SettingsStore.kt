@@ -8,6 +8,8 @@ import com.wapp.paperflipai.designsystem.theme.PFLanguage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Every user preference the app persists, in one place — the Android
@@ -100,6 +102,7 @@ class SettingsStore(context: Context) {
     val reminderMinuteOfDay: StateFlow<Int> = _reminderMinuteOfDay.asStateFlow()
 
     fun setReminder(enabled: Boolean, minuteOfDay: Int = _reminderMinuteOfDay.value) {
+        if (enabled != _reminderEnabled.value) PFAnalytics.log(AnalyticsEvent.reminderToggled(enabled))
         _reminderEnabled.value = enabled
         _reminderMinuteOfDay.value = minuteOfDay
         prefs.edit()

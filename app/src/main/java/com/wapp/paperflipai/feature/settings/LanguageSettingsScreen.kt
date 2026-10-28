@@ -29,6 +29,8 @@ import com.wapp.paperflipai.designsystem.component.PFTopBar
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFLanguage
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * System / English / Arabic / French / Spanish — the Android counterpart of
@@ -72,6 +74,7 @@ fun LanguageSettingsScreen(onBack: () -> Unit) {
                         icon = language.icon,
                         showChevron = false,
                         onClick = {
+                            PFAnalytics.log(AnalyticsEvent.languageChanged(language.rawValue))
                             env.settings.setLanguage(language)
                             applyLocale(context, language)
                         },

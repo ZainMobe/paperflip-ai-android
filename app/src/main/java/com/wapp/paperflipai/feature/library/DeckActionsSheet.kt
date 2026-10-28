@@ -26,6 +26,7 @@ import com.wapp.paperflipai.designsystem.component.PFRowDivider
 import com.wapp.paperflipai.designsystem.component.PFSectionHeader
 import com.wapp.paperflipai.designsystem.component.PFSheet
 import com.wapp.paperflipai.designsystem.theme.PFTheme
+import com.wapp.paperflipai.core.analytics.TrackScreen
 
 /**
  * Long-press actions for a deck — the Android counterpart of the iOS
@@ -44,6 +45,7 @@ fun DeckActionsSheet(
     onTogglePublic: (() -> Unit)? = null,
     onDelete: () -> Unit,
 ) {
+    TrackScreen("deck_actions", "DeckActionsSheet")
     var showFolders by remember { mutableStateOf(false) }
     var showProjects by remember { mutableStateOf(false) }
 

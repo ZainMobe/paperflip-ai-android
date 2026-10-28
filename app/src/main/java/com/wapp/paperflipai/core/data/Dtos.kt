@@ -354,3 +354,37 @@ data class GenerationRequest(
         )
     }
 }
+
+// MARK: - Async generation (`generation_jobs` table, `generate-deck-job` function)
+
+@Serializable
+enum class GenerationJobStatus {
+    @SerialName("queued") Queued,
+    @SerialName("fetching") Fetching,
+    @SerialName("generating") Generating,
+    @SerialName("done") Done,
+    @SerialName("failed") Failed,
+}
+
+@Serializable
+data class GenerationJobDto(
+    val id: String,
+    val status: GenerationJobStatus,
+    /** The finished deck, same shape the old synchronous function returned. */
+    val deck: DeckDto? = null,
+    @SerialName("error_code") val errorCode: String? = null,
+    /** Already user-facing; show it verbatim. */
+    @SerialName("error_message") val errorMessage: String? = null,
+) {
+    val isFinished: Boolean
+        get() = status == GenerationJobStatus.Done || status == GenerationJobStatus.Failed
+}
+
+// MARK: - Card explanation (`explain-card` function)
+
+@Serializable
+data class CardExplanationDto(
+    val explanation: String,
+    val example: String = "",
+    val mnemonic: String = "",
+)

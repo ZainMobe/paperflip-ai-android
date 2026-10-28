@@ -41,12 +41,15 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.wapp.paperflipai.R
+import com.wapp.paperflipai.core.data.QuizMode
 import com.wapp.paperflipai.designsystem.PFIcons
 import com.wapp.paperflipai.designsystem.modifier.PFHaptic
 import com.wapp.paperflipai.designsystem.modifier.pfPressable
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.feature.importer.ImportHubScreen
+import com.wapp.paperflipai.feature.importer.ImportReviewScreen
+import com.wapp.paperflipai.feature.importer.PasteCardsScreen
 import com.wapp.paperflipai.feature.importer.SourceInputScreen
 import com.wapp.paperflipai.feature.library.DeckDetailScreen
 import com.wapp.paperflipai.feature.library.LibraryHomeScreen
@@ -55,6 +58,9 @@ import com.wapp.paperflipai.feature.paywall.PaywallScreen
 import com.wapp.paperflipai.feature.paywall.ProUnlockedScreen
 import com.wapp.paperflipai.feature.projects.PendingInvitesScreen
 import com.wapp.paperflipai.feature.projects.ProjectDetailScreen
+import com.wapp.paperflipai.feature.quiz.MatchGameScreen
+import com.wapp.paperflipai.feature.quiz.QuizConfiguration
+import com.wapp.paperflipai.feature.quiz.QuizSessionScreen
 import com.wapp.paperflipai.feature.settings.AppearanceSettingsScreen
 import com.wapp.paperflipai.feature.settings.DeleteAccountScreen
 import com.wapp.paperflipai.feature.settings.EditProfileScreen
@@ -66,6 +72,10 @@ import com.wapp.paperflipai.feature.stats.StatsHomeScreen
 import com.wapp.paperflipai.feature.study.StudyHomeScreen
 import com.wapp.paperflipai.feature.study.StudySessionScreen
 import com.wapp.paperflipai.feature.support.SupportChatScreen
+import androidx.compose.runtime.DisposableEffect
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import com.wapp.paperflipai.core.analytics.PaywallSource
 
 /**
  * The post-auth root — the Android counterpart of `RootTabBar.swift`.
@@ -81,6 +91,12 @@ fun MainScaffold() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = currentRoute in Route.topLevel
+
+    DisposableEffect(currentRoute) {
+        val name = currentRoute?.let(::screenNameFor)
+        name?.let { PFAnalytics.screen(it, screenClassFor(currentRoute)) }
+        onDispose { name?.let(PFAnalytics::screenLeft) }
+    }
 
     // Deep links, notification taps and share hand-offs land here.
     val pendingAction by IntentInbox.pending.collectAsStateWithLifecycle()
@@ -155,7 +171,7 @@ fun MainScaffold() {
                     onOpenImport = { navController.navigateToTab(Route.IMPORT) },
                     onOpenNotifications = { navController.navigate(Route.NOTIFICATIONS_INBOX) },
                     onOpenInvites = { navController.navigate(Route.PENDING_INVITES) },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(it)) },
                 )
             }
             composable(Route.STUDY) {
@@ -170,9 +186,15 @@ fun MainScaffold() {
             composable(Route.IMPORT) {
                 ImportHubScreen(
                     onPickSource = { type, shared ->
+                        PFAnalytics.log(AnalyticsEvent.importSourceSelected(type))
                         navController.navigate(Route.importSource(type, shared))
                     },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(it)) },
+                    onOpenPasteCards = {
+                        PFAnalytics.log(AnalyticsEvent.importSourceSelected("paste_cards"))
+                        navController.navigate(Route.IMPORT_PASTE)
+                    },
+                    onOpenDraftReview = { navController.navigate(Route.IMPORT_REVIEW) },
                 )
             }
             composable(Route.STATS) {
@@ -198,8 +220,14 @@ fun MainScaffold() {
                     onStudy = { deckId ->
                         navController.navigate(Route.studySession(deckId = deckId))
                     },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(it)) },
                     onOpenProject = { navController.navigate(Route.project(it)) },
+                    onStartQuiz = { deckId, config ->
+                        navController.navigate(
+                            Route.quiz(deckId, config.mode.raw, config.questionCount, config.timeLimitSeconds)
+                        )
+                    },
+                    onStartMatch = { deckId -> navController.navigate(Route.match(deckId)) },
                 )
             }
 
@@ -211,7 +239,7 @@ fun MainScaffold() {
                     projectId = entry.arguments?.getString("projectId").orEmpty(),
                     onBack = { navController.popBackStack() },
                     onOpenDeck = { navController.navigate(Route.deck(it)) },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(PaywallSource.Unknown)) },
                 )
             }
 
@@ -243,7 +271,60 @@ fun MainScaffold() {
                         navController.popBackStack()
                         navController.navigate(Route.deck(deckId))
                     },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(it)) },
+                )
+            }
+
+            composable(Route.IMPORT_PASTE) {
+                PasteCardsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDeck = { deckId ->
+                        navController.popBackStack()
+                        navController.navigate(Route.deck(deckId))
+                    },
+                    onOpenPaywall = { navController.navigate(Route.paywall(PaywallSource.ReviewProjectChip)) },
+                )
+            }
+
+            composable(Route.IMPORT_REVIEW) {
+                ImportReviewScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDeck = { deckId ->
+                        navController.popBackStack()
+                        navController.navigate(Route.deck(deckId))
+                    },
+                    onOpenPaywall = { navController.navigate(Route.paywall(PaywallSource.ReviewProjectChip)) },
+                )
+            }
+
+            // ── Quizzes ───────────────────────────────────────────────
+            composable(
+                route = Route.QUIZ,
+                arguments = listOf(
+                    navArgument("deckId") { type = NavType.StringType },
+                    navArgument("mode") { type = NavType.StringType; defaultValue = "quiz" },
+                    navArgument("count") { type = NavType.IntType; defaultValue = 0 },
+                    navArgument("time") { type = NavType.IntType; defaultValue = 0 },
+                ),
+            ) { entry ->
+                QuizSessionScreen(
+                    deckId = entry.arguments?.getString("deckId").orEmpty(),
+                    configuration = QuizConfiguration(
+                        mode = QuizMode.from(entry.arguments?.getString("mode")),
+                        questionCount = entry.arguments?.getInt("count")?.takeIf { it > 0 },
+                        timeLimitSeconds = entry.arguments?.getInt("time")?.takeIf { it > 0 },
+                    ),
+                    onFinish = { navController.popBackStack() },
+                )
+            }
+
+            composable(
+                route = Route.MATCH,
+                arguments = listOf(navArgument("deckId") { type = NavType.StringType }),
+            ) { entry ->
+                MatchGameScreen(
+                    deckId = entry.arguments?.getString("deckId").orEmpty(),
+                    onFinish = { navController.popBackStack() },
                 )
             }
 
@@ -266,7 +347,7 @@ fun MainScaffold() {
             composable(Route.SETTINGS_SUBSCRIPTION) {
                 ManageSubscriptionScreen(
                     onBack = { navController.popBackStack() },
-                    onOpenPaywall = { navController.navigate(Route.PAYWALL) },
+                    onOpenPaywall = { navController.navigate(Route.paywall(PaywallSource.ManageSubscription)) },
                 )
             }
             composable(Route.SETTINGS_DELETE) {
@@ -274,8 +355,12 @@ fun MainScaffold() {
             }
 
             // ── Standalone ────────────────────────────────────────────
-            composable(Route.PAYWALL) {
+            composable(
+                route = Route.PAYWALL,
+                arguments = listOf(navArgument("source") { type = NavType.StringType; defaultValue = "" }),
+            ) { entry ->
                 PaywallScreen(
+                    source = PaywallSource.from(entry.arguments?.getString("source")),
                     onClose = { navController.popBackStack() },
                     onPurchased = {
                         navController.popBackStack()
@@ -317,10 +402,74 @@ fun MainScaffold() {
         ) {
             PFBottomBar(
                 currentRoute = currentRoute,
-                onSelect = { navController.navigateToTab(it) },
+                onSelect = {
+                    PFAnalytics.log(AnalyticsEvent.tabSelected(tabAnalyticsName(it)))
+                    navController.navigateToTab(it)
+                },
             )
         }
     }
+}
+
+private fun tabAnalyticsName(route: String): String = when (route) {
+    Route.IMPORT -> "importer"
+    else -> route
+}
+
+private fun screenNameFor(route: String): String = when (route) {
+    Route.LIBRARY -> "library"
+    Route.STUDY -> "study_home"
+    Route.IMPORT -> "import_hub"
+    Route.STATS -> "stats"
+    Route.SETTINGS -> "settings"
+    Route.DECK -> "deck_detail"
+    Route.PROJECT -> "project_detail"
+    Route.STUDY_SESSION -> "study_session"
+    Route.IMPORT_SOURCE -> "import_source_input"
+    Route.IMPORT_PASTE -> "import_paste_cards"
+    Route.IMPORT_REVIEW -> "import_review"
+    Route.QUIZ -> "quiz_session"
+    Route.MATCH -> "match_game"
+    Route.SETTINGS_PROFILE -> "settings_profile"
+    Route.SETTINGS_APPEARANCE -> "settings_appearance"
+    Route.SETTINGS_LANGUAGE -> "settings_language"
+    Route.SETTINGS_NOTIFICATIONS -> "settings_notifications"
+    Route.SETTINGS_SUBSCRIPTION -> "settings_subscription"
+    Route.SETTINGS_DELETE -> "settings_delete_account"
+    Route.PAYWALL -> "paywall"
+    Route.PRO_UNLOCKED -> "pro_unlocked"
+    Route.NOTIFICATIONS_INBOX -> "notifications_inbox"
+    Route.SUPPORT -> "support_chat"
+    Route.PENDING_INVITES -> "pending_invites"
+    else -> route.substringBefore('/').substringBefore('?')
+}
+
+private fun screenClassFor(route: String): String = when (route) {
+    Route.LIBRARY -> "LibraryHomeScreen"
+    Route.STUDY -> "StudyHomeScreen"
+    Route.IMPORT -> "ImportHubScreen"
+    Route.STATS -> "StatsHomeScreen"
+    Route.SETTINGS -> "SettingsHomeScreen"
+    Route.DECK -> "DeckDetailScreen"
+    Route.PROJECT -> "ProjectDetailScreen"
+    Route.STUDY_SESSION -> "StudySessionScreen"
+    Route.IMPORT_SOURCE -> "SourceInputScreen"
+    Route.IMPORT_PASTE -> "PasteCardsScreen"
+    Route.IMPORT_REVIEW -> "ImportReviewScreen"
+    Route.QUIZ -> "QuizSessionScreen"
+    Route.MATCH -> "MatchGameScreen"
+    Route.SETTINGS_PROFILE -> "EditProfileScreen"
+    Route.SETTINGS_APPEARANCE -> "AppearanceSettingsScreen"
+    Route.SETTINGS_LANGUAGE -> "LanguageSettingsScreen"
+    Route.SETTINGS_NOTIFICATIONS -> "NotificationSettingsScreen"
+    Route.SETTINGS_SUBSCRIPTION -> "ManageSubscriptionScreen"
+    Route.SETTINGS_DELETE -> "DeleteAccountScreen"
+    Route.PAYWALL -> "PaywallScreen"
+    Route.PRO_UNLOCKED -> "ProUnlockedScreen"
+    Route.NOTIFICATIONS_INBOX -> "NotificationsInboxScreen"
+    Route.SUPPORT -> "SupportChatScreen"
+    Route.PENDING_INVITES -> "PendingInvitesScreen"
+    else -> screenNameFor(route)
 }
 
 /** Standard "switch tab" behaviour: single instance, restore state. */

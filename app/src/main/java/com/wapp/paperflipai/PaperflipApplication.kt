@@ -2,6 +2,7 @@ package com.wapp.paperflipai
 
 import android.app.Application
 import com.wapp.paperflipai.app.AppEnvironment
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Owns the [AppEnvironment] for the process. The activity, the widget and
@@ -16,6 +17,7 @@ class PaperflipApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        PFAnalytics.init(this)
         environment = AppEnvironment(this)
         environment.bootstrap()
     }

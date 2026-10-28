@@ -1,5 +1,7 @@
 package com.wapp.paperflipai.feature.importer
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -23,11 +25,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -35,10 +39,15 @@ import com.wapp.paperflipai.R
 import com.wapp.paperflipai.app.IntentInbox
 import com.wapp.paperflipai.app.LocalAppEnvironment
 import com.wapp.paperflipai.app.PFAction
+import com.wapp.paperflipai.core.data.DeckDto
 import com.wapp.paperflipai.core.data.PFSourceType
+import com.wapp.paperflipai.core.data.newId
+import com.wapp.paperflipai.core.importing.AnkiPackageImporter
+import com.wapp.paperflipai.core.importing.UrlExtractor
 import com.wapp.paperflipai.designsystem.PFIcons
 import com.wapp.paperflipai.designsystem.component.PFScreen
 import com.wapp.paperflipai.designsystem.component.PFTagPill
+import com.wapp.paperflipai.designsystem.component.PFToast
 import com.wapp.paperflipai.designsystem.component.PFTopBar
 import com.wapp.paperflipai.designsystem.component.tabBarContentPadding
 import com.wapp.paperflipai.designsystem.modifier.pfPressable
@@ -47,6 +56,12 @@ import com.wapp.paperflipai.designsystem.theme.PFElevation
 import com.wapp.paperflipai.designsystem.theme.PFRadius
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import com.wapp.paperflipai.designsystem.theme.pfElevation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.wapp.paperflipai.core.analytics.PaywallSource
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * Entry point for creating a deck — the Android counterpart of
@@ -59,12 +74,72 @@ import com.wapp.paperflipai.designsystem.theme.pfElevation
 @Composable
 fun ImportHubScreen(
     onPickSource: (sourceType: String, shared: String?) -> Unit,
-    onOpenPaywall: () -> Unit,
+    onOpenPaywall: (PaywallSource) -> Unit,
+    onOpenPasteCards: () -> Unit,
+    onOpenDraftReview: () -> Unit,
 ) {
     val env = LocalAppEnvironment.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val entitlement by env.entitlements.entitlement.collectAsStateWithLifecycle()
     val pendingAction by IntentInbox.pending.collectAsStateWithLifecycle()
     var showSharedLink by remember { mutableStateOf(false) }
+    var isImportingAnki by remember { mutableStateOf(false) }
+
+    val ankiSummary = stringResource(R.string.anki_deck_summary)
+    val ankiErrors = mapOf(
+        AnkiPackageImporter.ImportError.Reason.NewFormat to stringResource(R.string.anki_err_new_format),
+        AnkiPackageImporter.ImportError.Reason.NoCollection to stringResource(R.string.anki_err_no_collection),
+        AnkiPackageImporter.ImportError.Reason.Database to stringResource(R.string.anki_err_database),
+        AnkiPackageImporter.ImportError.Reason.Empty to stringResource(R.string.anki_err_empty),
+        AnkiPackageImporter.ImportError.Reason.NotAnArchive to stringResource(R.string.anki_err_not_archive),
+    )
+    val ankiReadFailed = stringResource(R.string.anki_err_read)
+    val ankiSkippedTemplate = stringResource(R.string.anki_skipped_notes)
+
+    // Anki .apkg: parsed on the device, then straight to review. No AI, no credit.
+    val ankiPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        isImportingAnki = true
+        scope.launch {
+            try {
+                val (name, bytes) = withContext(Dispatchers.IO) {
+                    val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                        val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (i >= 0 && c.moveToFirst()) c.getString(i) else null
+                    } ?: "Anki import.apkg"
+                    name to (context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: error("unreadable"))
+                }
+                val imported = withContext(Dispatchers.IO) {
+                    AnkiPackageImporter.import(bytes, name, context.cacheDir)
+                }
+                ImportDraft.put(
+                    DeckDto(
+                        id = newId(),
+                        userId = env.auth.session.value?.userId.orEmpty(),
+                        title = imported.title,
+                        summary = ankiSummary.format(imported.cards.size),
+                        sourceType = PFSourceType.Text.raw,
+                        cards = imported.cards.map { it.copy(id = newId()) },
+                    )
+                )
+                PFAnalytics.log(AnalyticsEvent.ankiImportCompleted(imported.cards.size, imported.skipped))
+                if (imported.skipped > 0) PFToast.info(ankiSkippedTemplate.format(imported.skipped))
+                onOpenDraftReview()
+            } catch (failure: AnkiPackageImporter.ImportError) {
+                PFAnalytics.log(AnalyticsEvent.importFailed("anki", "parse", failure.reason.name))
+                PFToast.error(ankiErrors[failure.reason] ?: ankiReadFailed)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                PFAnalytics.error(failure, "anki_import")
+                PFToast.error(ankiReadFailed)
+            } finally {
+                isImportingAnki = false
+            }
+        }
+    }
 
     // Share-sheet hand-off: pick the source type from the shared payload.
     LaunchedEffect(pendingAction) {
@@ -75,7 +150,9 @@ fun ImportHubScreen(
                 val type = when {
                     text.contains("youtube.com", true) || text.contains("youtu.be", true) ->
                         PFSourceType.Youtube
-                    else -> PFSourceType.Article
+                    UrlExtractor.firstUrl(text) != null -> PFSourceType.Article
+                    // Shared text with no link at all: treat it as notes.
+                    else -> PFSourceType.Text
                 }
                 onPickSource(type.raw, text)
             }
@@ -138,8 +215,51 @@ fun ImportHubScreen(
                     icon = PFIcons.Article,
                     tint = PFTheme.colors.warning,
                     title = stringResource(R.string.from_an_article),
-                    body = stringResource(R.string.any_article_url_we_ll_read_it_and_pull_out_the),
+                    body = stringResource(R.string.hub_article_body),
                     onClick = { onPickSource(PFSourceType.Article.raw, null) },
+                )
+                SourceCard(
+                    icon = PFIcons.DocumentScan,
+                    tint = PFTheme.colors.info,
+                    title = stringResource(R.string.source_title_photo),
+                    body = stringResource(R.string.hub_photo_body),
+                    onClick = { onPickSource(PFSourceType.Photo.raw, null) },
+                )
+                SourceCard(
+                    icon = PFIcons.Waveform,
+                    tint = PFTheme.colors.hard,
+                    title = stringResource(R.string.source_title_lecture),
+                    body = stringResource(R.string.hub_lecture_body),
+                    onClick = { onPickSource(PFSourceType.Audio.raw, null) },
+                )
+                SourceCard(
+                    icon = PFIcons.Notes,
+                    tint = PFTheme.colors.success,
+                    title = stringResource(R.string.source_title_notes),
+                    body = stringResource(R.string.hub_notes_body),
+                    onClick = { onPickSource(PFSourceType.Text.raw, null) },
+                )
+                SourceCard(
+                    icon = PFIcons.Paste,
+                    tint = PFTheme.colors.onSurface,
+                    title = stringResource(R.string.paste_title),
+                    body = stringResource(R.string.hub_paste_body),
+                    onClick = onOpenPasteCards,
+                )
+                SourceCard(
+                    icon = PFIcons.Archive,
+                    tint = PFTheme.colors.onSurface,
+                    title = stringResource(R.string.anki_title),
+                    body = stringResource(
+                        if (isImportingAnki) R.string.anki_importing else R.string.hub_anki_body
+                    ),
+                    onClick = {
+                        if (!isImportingAnki) {
+                            // .apkg has no registered MIME type on most devices.
+                            PFAnalytics.log(AnalyticsEvent.importSourceSelected("anki"))
+                            ankiPicker.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                        }
+                    },
                 )
                 SourceCard(
                     icon = PFIcons.Link,
@@ -151,7 +271,7 @@ fun ImportHubScreen(
                     ),
                     proBadge = !entitlement.isActive,
                     onClick = {
-                        if (entitlement.isActive) showSharedLink = true else onOpenPaywall()
+                        if (entitlement.isActive) showSharedLink = true else onOpenPaywall(PaywallSource.SharedLinkImport)
                     },
                 )
             }
@@ -161,7 +281,7 @@ fun ImportHubScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(PFTheme.colors.accentSoft, RoundedCornerShape(PFRadius.lg))
-                        .pfPressable(onClick = onOpenPaywall, pressedScale = 0.985f)
+                        .pfPressable(onClick = { onOpenPaywall(PaywallSource.ImportProHint) }, pressedScale = 0.985f)
                         .padding(PFTheme.spacing.md),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

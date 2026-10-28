@@ -48,6 +48,10 @@ import com.wapp.paperflipai.designsystem.component.PFProgressRing
 import com.wapp.paperflipai.designsystem.modifier.pfReadableWidth
 import com.wapp.paperflipai.designsystem.theme.PFTheme
 import kotlinx.coroutines.launch
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
+import com.wapp.paperflipai.core.analytics.TrackScreen
+import androidx.compose.runtime.DisposableEffect
 
 /**
  * The full-screen study session — the Android counterpart of
@@ -69,12 +73,22 @@ fun StudySessionScreen(
 
     // The queue is captured once so mutating SRS state mid-session doesn't
     // reshuffle the cards under the user.
+    // Decks with an exam date contribute their paced queue (StudyPlan).
     val queue: List<PFFlashcard> = remember(deckId) {
-        val pool = if (deckId != null) env.database.cards(deckId) else env.database.snapshot.value.cards
-        StudyQueue.dueCards(pool).ifEmpty {
-            pool.shuffled().take(StudyQueue.DEFAULT_LIMIT)
+        val snap = env.database.snapshot.value
+        val pool = if (deckId != null) env.database.cards(deckId) else snap.cards
+        val planned = if (deckId != null) {
+            StudyQueue.plannedCards(pool, env.database.deck(deckId)?.examDate)
+        } else {
+            snap.decks
+                .flatMap { deck ->
+                    StudyQueue.plannedCards(env.database.cards(deck.id), deck.examDate, limit = Int.MAX_VALUE)
+                }
+                .take(StudyQueue.DEFAULT_LIMIT * 2)
         }
+        planned.ifEmpty { pool.shuffled().take(StudyQueue.DEFAULT_LIMIT) }
     }
+    var explaining by remember { mutableStateOf<PFFlashcard?>(null) }
 
     var index by remember { mutableIntStateOf(0) }
     var correctCount by remember { mutableIntStateOf(0) }
@@ -85,6 +99,18 @@ fun StudySessionScreen(
     var finishedAt by remember { mutableLongStateOf(0L) }
 
     BackHandler(enabled = !isComplete) { onFinish() }
+
+    LaunchedEffect(deckId) {
+        PFAnalytics.log(AnalyticsEvent.studySessionStarted(if (deckId != null) "deck" else "mixed", queue.size))
+    }
+    DisposableEffect(deckId) {
+        onDispose {
+            if (!isComplete) {
+                PFAnalytics.log(AnalyticsEvent.studySessionAbandoned(index, queue.size, PFAnalytics.secondsSince(startedAt)))
+            }
+        }
+    }
+    if (isComplete) TrackScreen("study_summary", "StudySummary")
 
     fun finish() {
         finishedAt = System.currentTimeMillis()
@@ -102,6 +128,9 @@ fun StudySessionScreen(
         didIncrementStreak = env.streaks.recordStudy()
         streakCount = env.streaks.count.value
         env.refreshWidget()
+        PFAnalytics.log(
+            AnalyticsEvent.studySessionCompleted(index, correctCount, PFAnalytics.secondsSince(startedAt), didIncrementStreak)
+        )
         isComplete = true
     }
 
@@ -214,6 +243,7 @@ fun StudySessionScreen(
                     CardStack(
                         cards = queue.drop(index),
                         onResponse = { response -> handle(response) },
+                        onExplain = { explaining = it },
                     )
                 }
 
@@ -227,5 +257,13 @@ fun StudySessionScreen(
                 }
             }
         }
+    }
+
+    explaining?.let { card ->
+        ExplainCardSheet(
+            cardId = card.id,
+            deckTitle = deck?.title,
+            onDismiss = { explaining = null },
+        )
     }
 }

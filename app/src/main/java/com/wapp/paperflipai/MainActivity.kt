@@ -12,6 +12,8 @@ import com.wapp.paperflipai.app.AppEnvironment
 import com.wapp.paperflipai.app.IntentInbox
 import com.wapp.paperflipai.app.PFAction
 import com.wapp.paperflipai.app.PaperflipApp
+import com.wapp.paperflipai.core.analytics.AnalyticsEvent
+import com.wapp.paperflipai.core.analytics.PFAnalytics
 
 /**
  * The single activity. Everything above it is Jetpack Compose.
@@ -40,6 +42,16 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        PFAnalytics.appForegrounded()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations) PFAnalytics.appBackgrounded()
+    }
+
     override fun onResume() {
         super.onResume()
         environment.notifications.refreshAuthorization()
@@ -52,6 +64,9 @@ class MainActivity : ComponentActivity() {
         intent ?: return
         when (intent.action) {
             Intent.ACTION_VIEW -> {
+                intent.data?.let { uri ->
+                    PFAnalytics.log(AnalyticsEvent.deepLinkOpened(listOfNotNull(uri.host, uri.pathSegments.firstOrNull()?.takeIf { seg -> seg.all { it.isLetter() } }).joinToString("/")))
+                }
                 IntentInbox.actionFor(intent.dataString)?.let(IntentInbox::post)
             }
 
@@ -63,12 +78,14 @@ class MainActivity : ComponentActivity() {
                         @Suppress("DEPRECATION")
                         intent.getParcelableExtra(Intent.EXTRA_STREAM)
                     }
+                    PFAnalytics.log(AnalyticsEvent.deepLinkOpened("share_pdf"))
                     uri?.let { IntentInbox.post(PFAction.ImportSharedPdf(it.toString())) }
                 }
 
                 intent.type?.startsWith("text/") == true -> {
                     val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
                     if (!text.isNullOrEmpty()) {
+                        PFAnalytics.log(AnalyticsEvent.deepLinkOpened("share_text"))
                         val link = text.lineSequence()
                             .map { it.trim() }
                             .firstOrNull { it.startsWith("http", ignoreCase = true) }

@@ -62,22 +62,24 @@ class MockEntitlementStore(
     private companion object {
         const val KEY = "entitlement.v1"
 
+        // Mirrors the App Store setup: yearly first with a 7-day trial,
+        // monthly with no trial. Weekly is intentionally not offered.
         val defaultProducts = listOf(
-            PaywallProduct(
-                id = "ai.paperflip.monthly",
-                cadence = PaywallProduct.Cadence.Monthly,
-                priceLabel = "$9.99",
-                monthlyEquivCents = 999,
-                monthlyEquivLabel = "$9.99/mo",
-                introLabel = null,
-            ),
             PaywallProduct(
                 id = "ai.paperflip.yearly",
                 cadence = PaywallProduct.Cadence.Annual,
-                priceLabel = "$79.99",
-                monthlyEquivCents = 666,
-                monthlyEquivLabel = "$6.66/mo",
+                priceLabel = "$44.99",
+                monthlyEquivCents = 375,
+                monthlyEquivLabel = "$3.75/mo",
                 introLabel = "7-day free trial",
+            ),
+            PaywallProduct(
+                id = "ai.paperflip.monthly",
+                cadence = PaywallProduct.Cadence.Monthly,
+                priceLabel = "$7.99",
+                monthlyEquivCents = 799,
+                monthlyEquivLabel = "$7.99/mo",
+                introLabel = null,
             ),
         )
     }
